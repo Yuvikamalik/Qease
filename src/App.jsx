@@ -103,6 +103,39 @@ const translations = {
     queueJoined: 'Queue joined successfully.',
     peopleAheadNotice: 'people are ahead of you.',
     unread: 'unread',
+    admin: 'Admin',
+    adminTitle: 'Admin Dashboard',
+    demoAdmin: 'Frontend demo / public-place management',
+    totalActiveQueues: 'Total active queues',
+    peopleWaitingAdmin: 'People currently waiting',
+    currentlyServing: 'Currently serving',
+    availableStaff: 'Available staff',
+    completedToday: 'Completed today',
+    managePlace: 'Manage public place',
+    activeServices: 'Active services',
+    serviceManagement: 'Service Management',
+    staffManagement: 'Staff / Person Management',
+    queueManagement: 'Queue Management',
+    analytics: 'Basic Analytics',
+    adminNotifications: 'Admin Notifications',
+    active: 'Active',
+    paused: 'Paused',
+    servicesLabel: 'Services',
+    peopleWaitingShort: 'people waiting',
+    queueActive: 'Queue Active',
+    queuePaused: 'Queue Paused',
+    nextToken: 'Next Token',
+    pauseQueue: 'Pause Queue',
+    resumeQueue: 'Resume Queue',
+    resetQueue: 'Reset Demo Queue',
+    peopleServed: 'People served today',
+    averageWaiting: 'Average waiting time',
+    peakPeriod: 'Peak queue period',
+    noServices: 'No services configured for this place.',
+    noStaff: 'No staff assigned to this service.',
+    adminBusyAlert: 'Doctor Consultation queue is getting busy.',
+    adminUnavailableAlert: 'Dr. Ananya Sharma is currently unavailable.',
+    adminPausedAlert: 'Billing queue has been paused.',
   },
   hi: {
     brand: 'QEase',
@@ -206,6 +239,39 @@ const translations = {
     queueJoined: 'आप सफलतापूर्वक कतार में शामिल हो गए हैं।',
     peopleAheadNotice: 'आपसे आगे लोग हैं।',
     unread: 'अपठित',
+    admin: 'एडमिन',
+    adminTitle: 'एडमिन डैशबोर्ड',
+    demoAdmin: 'फ्रंटएंड डेमो / सार्वजनिक स्थान प्रबंधन',
+    totalActiveQueues: 'कुल सक्रिय कतारें',
+    peopleWaitingAdmin: 'वर्तमान में प्रतीक्षा कर रहे लोग',
+    currentlyServing: 'अभी सेवा में',
+    availableStaff: 'उपलब्ध स्टाफ',
+    completedToday: 'आज पूर्ण',
+    managePlace: 'सार्वजनिक स्थान प्रबंधित करें',
+    activeServices: 'सक्रिय सेवाएँ',
+    serviceManagement: 'सेवा प्रबंधन',
+    staffManagement: 'स्टाफ / व्यक्ति प्रबंधन',
+    queueManagement: 'कतार प्रबंधन',
+    analytics: 'बेसिक एनालिटिक्स',
+    adminNotifications: 'एडमिन सूचनाएँ',
+    active: 'सक्रिय',
+    paused: 'रोकी गई',
+    servicesLabel: 'सेवाएँ',
+    peopleWaitingShort: 'प्रतीक्षा कर रहे लोग',
+    queueActive: 'कतार सक्रिय',
+    queuePaused: 'कतार रोकी गई',
+    nextToken: 'अगला टोकन',
+    pauseQueue: 'कतार रोकें',
+    resumeQueue: 'कतार फिर शुरू करें',
+    resetQueue: 'डेमो कतार रीसेट करें',
+    peopleServed: 'आज सेवा प्राप्त लोग',
+    averageWaiting: 'औसत प्रतीक्षा समय',
+    peakPeriod: 'पीक कतार समय',
+    noServices: 'इस स्थान के लिए कोई सेवा कॉन्फ़िगर नहीं है।',
+    noStaff: 'इस सेवा के लिए कोई स्टाफ नियुक्त नहीं है।',
+    adminBusyAlert: 'डॉक्टर परामर्श कतार व्यस्त हो रही है।',
+    adminUnavailableAlert: 'डॉ. अनन्या शर्मा अभी उपलब्ध नहीं हैं।',
+    adminPausedAlert: 'बिलिंग कतार रोक दी गई है।',
   },
 }
 
@@ -270,6 +336,7 @@ const storageKeys = {
   activeQueue: 'qease-active-queue',
   history: 'qease-queue-history',
   notifications: 'qease-notifications',
+  staffOverrides: 'qease-staff-overrides',
 }
 
 function readStorage(key, fallback) {
@@ -360,7 +427,7 @@ function App() {
     if (typeof window === 'undefined') return 'landing'
     const params = new URLSearchParams(window.location.search)
     const currentView = params.get('view')
-    return currentView === 'selection' || currentView === 'services' || currentView === 'confirmation' || currentView === 'queue' || currentView === 'person' || currentView === 'dashboard' ? currentView : 'landing'
+    return currentView === 'selection' || currentView === 'services' || currentView === 'confirmation' || currentView === 'queue' || currentView === 'person' || currentView === 'dashboard' || currentView === 'admin' ? currentView : 'landing'
   })
   const [selectedPlace, setSelectedPlace] = useState(() => {
     if (typeof window === 'undefined') return null
@@ -390,6 +457,10 @@ function App() {
     const stored = readStorage(storageKeys.notifications, [])
     return Array.isArray(stored) ? stored : []
   })
+  const [adminPlaceId, setAdminPlaceId] = useState('hospital')
+  const [adminServiceState, setAdminServiceState] = useState({})
+  const [staffOverrides, setStaffOverrides] = useState(() => readStorage(storageKeys.staffOverrides, {}))
+  const [adminQueueState, setAdminQueueState] = useState({})
   const [queueProgress, setQueueProgress] = useState(() => {
     const storedQueue = readStorage(storageKeys.activeQueue, null)
     return {
@@ -402,12 +473,13 @@ function App() {
 
   const content = useMemo(() => translations[language], [language])
   const activeQueueToken = queueToken || activeQueue?.token || null
+  const selectedServicePaused = Boolean(selectedService && adminServiceState[selectedService])
 
   useEffect(() => {
     const handlePopState = () => {
       const params = new URLSearchParams(window.location.search)
       const route = params.get('view')
-      const nextView = route === 'selection' || route === 'services' || route === 'confirmation' || route === 'queue' || route === 'person' || route === 'dashboard' ? route : 'landing'
+      const nextView = route === 'selection' || route === 'services' || route === 'confirmation' || route === 'queue' || route === 'person' || route === 'dashboard' || route === 'admin' ? route : 'landing'
       setView(nextView)
       setSelectedPlace(params.get('place') || null)
       setSelectedService(params.get('service') || null)
@@ -421,6 +493,7 @@ function App() {
 
   useEffect(() => writeStorage(storageKeys.history, queueHistory), [queueHistory])
   useEffect(() => writeStorage(storageKeys.notifications, notifications), [notifications])
+  useEffect(() => writeStorage(storageKeys.staffOverrides, staffOverrides), [staffOverrides])
   useEffect(() => {
     if (activeQueue) writeStorage(storageKeys.activeQueue, activeQueue)
     else {
@@ -429,7 +502,7 @@ function App() {
   }, [activeQueue])
 
   useEffect(() => {
-    if ((view !== 'queue' && view !== 'dashboard') || !activeQueueToken || queuePaused || queueProgress.peopleAhead <= 0) return undefined
+    if ((view !== 'queue' && view !== 'dashboard') || !activeQueueToken || queuePaused || selectedServicePaused || queueProgress.peopleAhead <= 0) return undefined
 
     let alertTimeout
     const timer = window.setInterval(() => {
@@ -462,7 +535,7 @@ function App() {
       window.clearInterval(timer)
       window.clearTimeout(alertTimeout)
     }
-  }, [activeQueueToken, queuePaused, queueProgress.peopleAhead, view])
+  }, [activeQueueToken, queuePaused, queueProgress.peopleAhead, selectedServicePaused, view])
 
   const updateRoute = (nextView, nextPlace = selectedPlace, nextService = selectedService, nextToken = queueToken, nextPerson = selectedPerson) => {
     const params = new URLSearchParams(window.location.search)
@@ -519,6 +592,12 @@ function App() {
       params.delete('service')
       params.delete('person')
       params.delete('token')
+    } else if (nextView === 'admin') {
+      params.set('view', 'admin')
+      params.delete('place')
+      params.delete('service')
+      params.delete('person')
+      params.delete('token')
     }
 
     const queryString = params.toString()
@@ -545,6 +624,10 @@ function App() {
 
   const handleGoToDashboard = () => {
     updateRoute('dashboard', null, null)
+  }
+
+  const handleGoToAdmin = () => {
+    updateRoute('admin', null, null)
   }
 
   const handleOpenActiveQueue = () => {
@@ -672,7 +755,9 @@ function App() {
   const selectedPersonInfo = peopleForService.find((person) => person.id === selectedPerson) || null
   const currentQueueToken = `A-${queueProgress.servingNumber}`
   const estimatedQueueWait = queueProgress.peopleAhead * demoQueue.averageServiceTime
-  const queueStatus = queueProgress.peopleAhead === 0 ? 'your-turn' : queueProgress.peopleAhead <= 2 ? 'approaching' : 'waiting'
+  const queueStatus = selectedServicePaused ? 'paused' : queueProgress.peopleAhead === 0 ? 'your-turn' : queueProgress.peopleAhead <= 2 ? 'approaching' : 'waiting'
+  const dashboardQueueStatus = activeQueue?.service && adminServiceState[activeQueue.service] ? 'paused' : queueStatus
+  const queueStatusLabel = (status) => status === 'paused' ? content.queuePaused : status === 'your-turn' ? content.itsYourTurn : status === 'approaching' ? content.yourTurnApproaching : content.waiting
   const queueProgressPercent = Math.round(((demoQueue.peopleWaiting - queueProgress.peopleAhead) / demoQueue.peopleWaiting) * 100)
   const dashboardPlaceInfo = publicPlaces.find((place) => place.id === activeQueue?.place) || null
   const dashboardServiceInfo = dashboardPlaceInfo ? serviceCatalog[dashboardPlaceInfo.id]?.find((service) => service.id === activeQueue?.service) || null : null
@@ -683,12 +768,26 @@ function App() {
 
   const markAllNotificationsRead = () => setNotifications((current) => current.map((notification) => ({ ...notification, read: true })))
   const markNotificationRead = (notificationId) => setNotifications((current) => current.map((notification) => notification.id === notificationId ? { ...notification, read: true } : notification))
+  const getStaffStatus = (person) => staffOverrides[person.id] || person.status
   const notificationLabel = (notification) => {
     if (notification.message === 'queueJoined') return content.queueJoined
     if (notification.message === 'itsYourTurn') return content.itsYourTurn
     if (notification.message === 'yourTurnApproaching') return content.yourTurnApproaching
     return `${notification.peopleAhead} ${content.peopleAheadNotice}`
   }
+  const adminPlaceInfo = publicPlaces.find((place) => place.id === adminPlaceId) || publicPlaces[0]
+  const adminServices = serviceCatalog[adminPlaceInfo.id] || []
+  const getAdminQueue = (service, index) => adminQueueState[service.id] || { waiting: (index + 2) * 2, serving: index + 8 }
+  const adminStaff = adminServices.flatMap((service) => (personCatalog[service.id] || []).map((person) => ({ ...person, service })))
+  const adminWaiting = adminServices.reduce((total, service, index) => total + getAdminQueue(service, index).waiting, 0)
+  const adminAvailableStaff = adminStaff.filter((person) => getStaffStatus(person) === 'available').length
+  const adminNextToken = (service) => {
+    const current = adminQueueState[service.id] || { waiting: 2, serving: 8 }
+    setAdminQueueState((queues) => ({ ...queues, [service.id]: { ...current, waiting: Math.max(0, current.waiting - 1), serving: current.serving + 1 } }))
+  }
+  const resetAdminQueue = (service, index) => setAdminQueueState((queues) => ({ ...queues, [service.id]: { waiting: (index + 2) * 2, serving: index + 8 } }))
+  const toggleAdminService = (serviceId) => setAdminServiceState((services) => ({ ...services, [serviceId]: !services[serviceId] }))
+  const setAdminStaffStatus = (personId, status) => setStaffOverrides((overrides) => ({ ...overrides, [personId]: status }))
 
   return (
     <div className="app-shell">
@@ -707,6 +806,9 @@ function App() {
             </button>
             <button type="button" className="nav-link" onClick={handleGoToDashboard}>
               {content.dashboard}
+            </button>
+            <button type="button" className="nav-link" onClick={handleGoToAdmin}>
+              {content.admin}
             </button>
             <button
               type="button"
@@ -854,11 +956,11 @@ function App() {
                     <h3>{dashboardServiceInfo.name[language]}</h3>
                     {dashboardPersonInfo && <p>{dashboardPersonInfo.name[language]} · {dashboardPersonInfo.role[language]}</p>}
                   </div>
-                  <span className={`queue-status-badge queue-status-${queueStatus}`}>
-                    {queueStatus === 'your-turn' ? content.itsYourTurn : queueStatus === 'approaching' ? content.yourTurnApproaching : content.waiting}
+                  <span className={`queue-status-badge queue-status-${dashboardQueueStatus}`}>
+                    {dashboardQueueStatus === 'paused' ? content.queuePaused : dashboardQueueStatus === 'your-turn' ? content.itsYourTurn : dashboardQueueStatus === 'approaching' ? content.yourTurnApproaching : content.waiting}
                   </span>
                 </div>
-                {dashboardPersonInfo && <div className={`dashboard-availability status-${dashboardPersonInfo.status}`}>● {dashboardPersonInfo.status === 'available' ? content.available : dashboardPersonInfo.status === 'busy' ? content.currentlyBusy : content.notAvailable}</div>}
+                {dashboardPersonInfo && <div className={`dashboard-availability status-${getStaffStatus(dashboardPersonInfo)}`}>● {getStaffStatus(dashboardPersonInfo) === 'available' ? content.available : getStaffStatus(dashboardPersonInfo) === 'busy' ? content.currentlyBusy : content.notAvailable}</div>}
                 <div className="dashboard-summary-grid">
                   <div><span>{content.yourQueueToken}</span><strong>{activeQueue.token}</strong></div>
                   <div><span>{content.nowServing}</span><strong>{currentQueueToken}</strong></div>
@@ -916,6 +1018,40 @@ function App() {
               </div>
             </section>
           </div>
+        </main>
+      )}
+
+      {view === 'admin' && (
+        <main className="admin-screen container">
+          <div className="admin-heading">
+            <div><span className="eyebrow accent">{content.admin}</span><h2>{content.adminTitle}</h2><p>{content.demoAdmin}</p></div>
+            <button type="button" className="secondary-button" onClick={handleGoToLanding}>{content.home}</button>
+          </div>
+
+          <section className="admin-summary-grid">
+            {[
+              [content.totalActiveQueues, adminServices.filter((service) => !adminServiceState[service.id]).length, '▦'],
+              [content.peopleWaitingAdmin, adminWaiting, '♙'],
+              [content.currentlyServing, adminServices.length, '▶'],
+              [content.availableStaff, adminAvailableStaff, '●'],
+              [content.completedToday, 76, '✓'],
+            ].map(([label, value, icon]) => <article className="admin-stat-card" key={label}><span>{icon}</span><small>{label}</small><strong>{value}</strong></article>)}
+          </section>
+
+          <section className="admin-section place-manager">
+            <div className="admin-section-heading"><h3>{content.managePlace}</h3><select value={adminPlaceId} onChange={(event) => setAdminPlaceId(event.target.value)} aria-label={content.managePlace}>{publicPlaces.map((place) => <option value={place.id} key={place.id}>{place.name[language]}</option>)}</select></div>
+            <div className="place-manager-summary"><strong>{adminPlaceInfo.name[language]}</strong><span>{adminServices.length} {content.servicesLabel}</span><span>{adminWaiting} {content.peopleWaitingShort}</span><b>● {content.active}</b></div>
+          </section>
+
+          <div className="admin-columns">
+            <section className="admin-section"><div className="admin-section-heading"><h3>{content.serviceManagement}</h3></div><div className="admin-card-list">{adminServices.length ? adminServices.map((service, index) => { const queue = getAdminQueue(service, index); const paused = Boolean(adminServiceState[service.id]); return <article className="admin-list-card" key={service.id}><div><strong>{service.name[language]}</strong><span>{queue.waiting} {content.peopleWaitingShort}</span></div><div className="admin-card-actions"><span className={`admin-status ${paused ? 'status-paused' : 'status-active'}`}>● {paused ? content.paused : content.active}</span><button type="button" className="text-button" onClick={() => toggleAdminService(service.id)}>{paused ? content.resumeQueue : content.pauseQueue}</button></div></article> }) : <p className="dashboard-muted">{content.noServices}</p>}</div></section>
+
+            <section className="admin-section"><div className="admin-section-heading"><h3>{content.queueManagement}</h3></div><div className="admin-card-list">{adminServices.length ? adminServices.map((service, index) => { const queue = getAdminQueue(service, index); const paused = Boolean(adminServiceState[service.id]); return <article className="admin-list-card" key={service.id}><div><strong>{service.name[language]}</strong><span>{content.currentToken}: A-{queue.serving + queue.waiting} · {content.peopleWaiting}: {queue.waiting}</span></div><div className="admin-card-actions"><span className={`admin-status ${paused ? 'status-paused' : 'status-active'}`}>● {paused ? content.queuePaused : content.queueActive}</span><button type="button" className="text-button" onClick={() => adminNextToken(service)} disabled={paused}>{content.nextToken}</button><button type="button" className="text-button" onClick={() => resetAdminQueue(service, index)}>{content.resetQueue}</button></div></article> }) : <p className="dashboard-muted">{content.noServices}</p>}</div></section>
+          </div>
+
+          <section className="admin-section"><div className="admin-section-heading"><h3>{content.staffManagement}</h3></div><div className="staff-admin-grid">{adminStaff.length ? adminStaff.map((person) => { const status = getStaffStatus(person); return <article className="staff-admin-card" key={person.id}><span className="person-avatar" aria-hidden="true">{person.icon}</span><div><strong>{person.name[language]}</strong><span>{person.role[language]}</span><small>{person.service.name[language]}</small></div><span className={`admin-status status-${status}`}>● {status === 'available' ? content.available : status === 'busy' ? content.currentlyBusy : content.notAvailable}</span><div className="status-controls">{['available', 'busy', 'unavailable'].map((option) => <button type="button" key={option} className={status === option ? 'active' : ''} onClick={() => setAdminStaffStatus(person.id, option)}>{option === 'available' ? content.available : option === 'busy' ? content.busy : content.unavailable}</button>)}</div></article> }) : <p className="dashboard-muted">{content.noStaff}</p>}</div></section>
+
+          <div className="admin-columns"><section className="admin-section admin-panel"><div className="admin-section-heading"><h3>{content.analytics}</h3></div><div className="analytics-grid"><div><span>{content.peopleServed}</span><strong>76</strong></div><div><span>{content.averageWaiting}</span><strong>18 min</strong></div><div><span>{content.averageServiceTime}</span><strong>4 min</strong></div><div><span>{content.peakPeriod}</span><strong>11 AM - 1 PM</strong></div></div></section><section className="admin-section admin-panel"><div className="admin-section-heading"><h3>{content.adminNotifications}</h3></div><div className="admin-alert-list"><p>⚠ {content.adminBusyAlert}</p><p>● {content.adminUnavailableAlert}</p><p>Ⅱ {content.adminPausedAlert}</p></div></section></div>
         </main>
       )}
 
@@ -1046,8 +1182,8 @@ function App() {
                 <span>{content.selectedPersonLabel}</span>
                 <strong>{selectedPersonInfo.name[language]}</strong>
                 <small>{selectedPersonInfo.role[language]}</small>
-                <small className={`selected-person-status status-${selectedPersonInfo.status}`}>
-                  ● {selectedPersonInfo.status === 'available' ? content.available : selectedPersonInfo.status === 'busy' ? content.currentlyBusy : content.notAvailable}
+                <small className={`selected-person-status status-${getStaffStatus(selectedPersonInfo)}`}>
+                  ● {getStaffStatus(selectedPersonInfo) === 'available' ? content.available : getStaffStatus(selectedPersonInfo) === 'busy' ? content.currentlyBusy : content.notAvailable}
                 </small>
               </div>
             </div>
@@ -1101,14 +1237,14 @@ function App() {
                   <h3 id="joined-queue-title">{content.liveQueueStatus}</h3>
                 </div>
                 <span className={`queue-status-badge queue-status-${queueStatus}`}>
-                  {queueStatus === 'your-turn' ? content.itsYourTurn : queueStatus === 'approaching' ? content.yourTurnApproaching : content.waiting}
+                  {queueStatusLabel(queueStatus)}
                 </span>
               </div>
 
               <div className="digital-token-card">
                 <span>{content.yourQueueToken}</span>
                 <strong>{queueToken}</strong>
-                <div className="token-status"><span className="status-dot" aria-hidden="true" />{queueStatus === 'your-turn' ? content.itsYourTurn : queueStatus === 'approaching' ? content.yourTurnApproaching : content.waiting}</div>
+                <div className="token-status"><span className="status-dot" aria-hidden="true" />{queueStatusLabel(queueStatus)}</div>
               </div>
 
               <div className="joined-queue-details">
@@ -1116,7 +1252,7 @@ function App() {
                 <div><span>{content.peopleAhead}</span><strong>{queueProgress.peopleAhead}</strong></div>
                 <div><span>{content.estimatedWait}</span><strong>{estimatedQueueWait} {language === 'hi' ? 'मिनट' : 'minutes'}</strong></div>
                 <div><span>{content.averageServiceTime}</span><strong>{demoQueue.averageServiceTime} {content.minutesPerPerson}</strong></div>
-                <div><span>{content.status}</span><strong>{queueStatus === 'your-turn' ? content.itsYourTurn : queueStatus === 'approaching' ? content.yourTurnApproaching : content.waiting}</strong></div>
+                <div><span>{content.status}</span><strong>{queueStatusLabel(queueStatus)}</strong></div>
               </div>
 
               <div className="queue-progress-block">
@@ -1170,8 +1306,9 @@ function App() {
               <div className="person-grid">
                 {peopleForService.map((person) => {
                   const isSelected = selectedPerson === person.id
-                  const statusText = person.status === 'available' ? content.available : person.status === 'busy' ? content.currentlyBusy : content.notAvailable
-                  const detailText = person.status === 'available' ? content.availableNow : person.status === 'busy' ? content.servingAnother : `${content.expectedAt} ${person.expectedAt}`
+                  const personStatus = getStaffStatus(person)
+                  const statusText = personStatus === 'available' ? content.available : personStatus === 'busy' ? content.currentlyBusy : content.notAvailable
+                  const detailText = personStatus === 'available' ? content.availableNow : personStatus === 'busy' ? content.servingAnother : `${content.expectedAt} ${person.expectedAt}`
 
                   return (
                     <button
@@ -1187,7 +1324,7 @@ function App() {
                         <span>{person.role[language]}</span>
                         <span>{selectedServiceInfo.name[language]}</span>
                       </span>
-                      <span className={`availability availability-${person.status}`}>
+                      <span className={`availability availability-${personStatus}`}>
                         <span className="availability-dot" aria-hidden="true" />
                         <strong>{statusText}</strong>
                         <small>{detailText}</small>
