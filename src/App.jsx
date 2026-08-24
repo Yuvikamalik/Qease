@@ -82,6 +82,27 @@ const translations = {
     completed: 'Completed',
     queueLeft: 'Queue left',
     minutesPerPerson: 'minutes/person',
+    dashboard: 'Dashboard',
+    dashboardTitle: 'My Dashboard',
+    dashboardWelcome: 'Track your queues and manage your visits easily.',
+    activeQueue: 'Active Queue',
+    noActiveQueue: 'No Active Queue',
+    noActiveQueueText: 'You are not currently waiting in any queue.',
+    joinAQueue: 'Join a Queue',
+    notifications: 'Notifications',
+    markAllRead: 'Mark all as read',
+    noNotifications: 'No notifications yet.',
+    queueHistory: 'Queue History',
+    noQueueHistory: 'No Queue History',
+    noQueueHistoryText: 'Your previous queues will appear here.',
+    all: 'All',
+    historyLeft: 'Left Queue',
+    justNow: 'Just now',
+    today: 'Today',
+    yesterday: 'Yesterday',
+    queueJoined: 'Queue joined successfully.',
+    peopleAheadNotice: 'people are ahead of you.',
+    unread: 'unread',
   },
   hi: {
     brand: 'QEase',
@@ -164,6 +185,27 @@ const translations = {
     completed: 'पूर्ण',
     queueLeft: 'कतार छोड़ दी',
     minutesPerPerson: 'मिनट/व्यक्ति',
+    dashboard: 'डैशबोर्ड',
+    dashboardTitle: 'मेरा डैशबोर्ड',
+    dashboardWelcome: 'अपनी कतारों को ट्रैक करें और अपनी यात्राओं को आसानी से प्रबंधित करें।',
+    activeQueue: 'सक्रिय कतार',
+    noActiveQueue: 'कोई सक्रिय कतार नहीं',
+    noActiveQueueText: 'आप अभी किसी भी कतार में प्रतीक्षा नहीं कर रहे हैं।',
+    joinAQueue: 'कतार में शामिल हों',
+    notifications: 'सूचनाएँ',
+    markAllRead: 'सभी को पढ़ा हुआ चिह्नित करें',
+    noNotifications: 'अभी कोई सूचना नहीं है।',
+    queueHistory: 'कतार इतिहास',
+    noQueueHistory: 'कोई कतार इतिहास नहीं',
+    noQueueHistoryText: 'आपकी पिछली कतारें यहाँ दिखाई देंगी।',
+    all: 'सभी',
+    historyLeft: 'कतार छोड़ी',
+    justNow: 'अभी',
+    today: 'आज',
+    yesterday: 'कल',
+    queueJoined: 'आप सफलतापूर्वक कतार में शामिल हो गए हैं।',
+    peopleAheadNotice: 'आपसे आगे लोग हैं।',
+    unread: 'अपठित',
   },
 }
 
@@ -222,6 +264,30 @@ const demoQueue = {
   peopleWaiting: 7,
   estimatedWait: 20,
   averageServiceTime: 3,
+}
+
+const storageKeys = {
+  activeQueue: 'qease-active-queue',
+  history: 'qease-queue-history',
+  notifications: 'qease-notifications',
+}
+
+function readStorage(key, fallback) {
+  if (typeof window === 'undefined') return fallback
+  try {
+    const value = window.localStorage.getItem(key)
+    return value ? JSON.parse(value) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function writeStorage(key, value) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // Storage can be unavailable in private browsing or restricted environments.
+  }
 }
 
 function HeroIllustration() {
@@ -294,7 +360,7 @@ function App() {
     if (typeof window === 'undefined') return 'landing'
     const params = new URLSearchParams(window.location.search)
     const currentView = params.get('view')
-    return currentView === 'selection' || currentView === 'services' || currentView === 'confirmation' || currentView === 'queue' || currentView === 'person' ? currentView : 'landing'
+    return currentView === 'selection' || currentView === 'services' || currentView === 'confirmation' || currentView === 'queue' || currentView === 'person' || currentView === 'dashboard' ? currentView : 'landing'
   })
   const [selectedPlace, setSelectedPlace] = useState(() => {
     if (typeof window === 'undefined') return null
@@ -314,20 +380,34 @@ function App() {
     if (typeof window === 'undefined') return null
     return new URLSearchParams(window.location.search).get('person') || null
   })
-  const [queueProgress, setQueueProgress] = useState({
-    servingNumber: 18,
-    peopleAhead: demoQueue.peopleWaiting,
+  const [activeQueue, setActiveQueue] = useState(() => readStorage(storageKeys.activeQueue, null))
+  const [queueHistory, setQueueHistory] = useState(() => {
+    const history = readStorage(storageKeys.history, [])
+    return Array.isArray(history) ? history : []
+  })
+  const [historyFilter, setHistoryFilter] = useState('all')
+  const [notifications, setNotifications] = useState(() => {
+    const stored = readStorage(storageKeys.notifications, [])
+    return Array.isArray(stored) ? stored : []
+  })
+  const [queueProgress, setQueueProgress] = useState(() => {
+    const storedQueue = readStorage(storageKeys.activeQueue, null)
+    return {
+      servingNumber: storedQueue?.servingNumber ?? 18,
+      peopleAhead: storedQueue?.peopleAhead ?? demoQueue.peopleWaiting,
+    }
   })
   const [queuePaused, setQueuePaused] = useState(false)
   const [queueAlert, setQueueAlert] = useState(null)
 
   const content = useMemo(() => translations[language], [language])
+  const activeQueueToken = queueToken || activeQueue?.token || null
 
   useEffect(() => {
     const handlePopState = () => {
       const params = new URLSearchParams(window.location.search)
       const route = params.get('view')
-      const nextView = route === 'selection' || route === 'services' || route === 'confirmation' || route === 'queue' || route === 'person' ? route : 'landing'
+      const nextView = route === 'selection' || route === 'services' || route === 'confirmation' || route === 'queue' || route === 'person' || route === 'dashboard' ? route : 'landing'
       setView(nextView)
       setSelectedPlace(params.get('place') || null)
       setSelectedService(params.get('service') || null)
@@ -339,8 +419,17 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
+  useEffect(() => writeStorage(storageKeys.history, queueHistory), [queueHistory])
+  useEffect(() => writeStorage(storageKeys.notifications, notifications), [notifications])
   useEffect(() => {
-    if (view !== 'queue' || !queueToken || queuePaused || queueProgress.peopleAhead <= 0) return undefined
+    if (activeQueue) writeStorage(storageKeys.activeQueue, activeQueue)
+    else {
+      try { window.localStorage.removeItem(storageKeys.activeQueue) } catch { /* Storage unavailable. */ }
+    }
+  }, [activeQueue])
+
+  useEffect(() => {
+    if ((view !== 'queue' && view !== 'dashboard') || !activeQueueToken || queuePaused || queueProgress.peopleAhead <= 0) return undefined
 
     let alertTimeout
     const timer = window.setInterval(() => {
@@ -349,7 +438,18 @@ function App() {
         const nextServingNumber = current.servingNumber + 1
 
         if (nextPeopleAhead === 2 || nextPeopleAhead === 0) {
-          setQueueAlert(nextPeopleAhead === 0 ? 'your-turn' : 'approaching')
+          const alertType = nextPeopleAhead === 0 ? 'your-turn' : 'approaching'
+          setQueueAlert(alertType)
+          setNotifications((currentNotifications) => [
+            {
+              id: `${Date.now()}-${alertType}`,
+              type: alertType,
+              message: alertType === 'your-turn' ? 'itsYourTurn' : 'yourTurnApproaching',
+              time: new Date().toISOString(),
+              read: false,
+            },
+            ...currentNotifications,
+          ])
           window.clearTimeout(alertTimeout)
           alertTimeout = window.setTimeout(() => setQueueAlert(null), 5000)
         }
@@ -362,9 +462,9 @@ function App() {
       window.clearInterval(timer)
       window.clearTimeout(alertTimeout)
     }
-  }, [queuePaused, queueProgress.peopleAhead, queueToken, view])
+  }, [activeQueueToken, queuePaused, queueProgress.peopleAhead, view])
 
-  const updateRoute = (nextView, nextPlace = selectedPlace, nextService = selectedService) => {
+  const updateRoute = (nextView, nextPlace = selectedPlace, nextService = selectedService, nextToken = queueToken, nextPerson = selectedPerson) => {
     const params = new URLSearchParams(window.location.search)
 
     if (nextView === 'landing') {
@@ -399,9 +499,9 @@ function App() {
       else params.delete('place')
       if (nextService) params.set('service', nextService)
       else params.delete('service')
-      if (nextService && queueToken) params.set('token', queueToken)
+      if (nextService && nextToken) params.set('token', nextToken)
       else params.delete('token')
-      if (nextService && selectedPerson) params.set('person', selectedPerson)
+      if (nextService && nextPerson) params.set('person', nextPerson)
       else params.delete('person')
     } else if (nextView === 'person') {
       params.set('view', 'person')
@@ -409,10 +509,16 @@ function App() {
       else params.delete('place')
       if (nextService) params.set('service', nextService)
       else params.delete('service')
-      if (queueToken) params.set('token', queueToken)
+      if (nextToken) params.set('token', nextToken)
       else params.delete('token')
-      if (selectedPerson) params.set('person', selectedPerson)
+      if (nextPerson) params.set('person', nextPerson)
       else params.delete('person')
+    } else if (nextView === 'dashboard') {
+      params.set('view', 'dashboard')
+      params.delete('place')
+      params.delete('service')
+      params.delete('person')
+      params.delete('token')
     }
 
     const queryString = params.toString()
@@ -422,8 +528,8 @@ function App() {
     setView(nextView)
     setSelectedPlace(nextPlace || null)
     setSelectedService(nextService || null)
-    setQueueToken(nextView === 'queue' ? queueToken : null)
-    setSelectedPerson(nextView === 'person' || nextView === 'queue' ? selectedPerson : null)
+    setQueueToken(nextView === 'queue' ? nextToken : null)
+    setSelectedPerson(nextView === 'person' || nextView === 'queue' ? nextPerson : null)
   }
 
   const handleGoToLanding = () => {
@@ -435,6 +541,19 @@ function App() {
 
   const handleGoToSelection = () => {
     updateRoute('selection', selectedPlace, null)
+  }
+
+  const handleGoToDashboard = () => {
+    updateRoute('dashboard', null, null)
+  }
+
+  const handleOpenActiveQueue = () => {
+    if (!activeQueue) return
+    setSelectedPlace(activeQueue.place)
+    setSelectedService(activeQueue.service)
+    setSelectedPerson(activeQueue.person || null)
+    setQueueToken(activeQueue.token)
+    updateRoute('queue', activeQueue.place, activeQueue.service, activeQueue.token, activeQueue.person || null)
   }
 
   const handleContinue = () => {
@@ -480,6 +599,17 @@ function App() {
     setQueuePaused(false)
     setQueueAlert(null)
     setQueueToken(nextToken)
+    setActiveQueue({
+      place: selectedPlace,
+      service: selectedService,
+      person: selectedPerson,
+      token: nextToken,
+      servingNumber: 18,
+      peopleAhead: demoQueue.peopleWaiting,
+      estimatedWait: demoQueue.peopleWaiting * demoQueue.averageServiceTime,
+      joinedAt: new Date().toISOString(),
+    })
+    setNotifications((current) => [{ id: `${Date.now()}-joined`, type: 'joined', message: 'queueJoined', time: new Date().toISOString(), read: false }, ...current])
   }
 
   const handleChoosePerson = () => {
@@ -505,7 +635,23 @@ function App() {
 
   const handleLeaveQueue = () => {
     if (!window.confirm(content.leaveQueueConfirm)) return
-    updateRoute('services', selectedPlace, selectedService)
+    const queuePlace = selectedPlace || activeQueue?.place
+    const queueService = selectedService || activeQueue?.service
+    const queuePerson = selectedPerson || activeQueue?.person || null
+    if (activeQueue || queueToken) {
+      setQueueHistory((current) => [{
+        id: `${Date.now()}-left`,
+        place: queuePlace,
+        service: queueService,
+        person: queuePerson,
+        token: queueToken || activeQueue?.token,
+        status: 'left',
+        estimatedWait: queueProgress.peopleAhead * demoQueue.averageServiceTime,
+        timestamp: new Date().toISOString(),
+      }, ...current])
+    }
+    updateRoute('services', queuePlace, queueService)
+    setActiveQueue(null)
     setQueuePaused(true)
     setQueueAlert(null)
     setQueueProgress({ servingNumber: 18, peopleAhead: demoQueue.peopleWaiting })
@@ -528,6 +674,21 @@ function App() {
   const estimatedQueueWait = queueProgress.peopleAhead * demoQueue.averageServiceTime
   const queueStatus = queueProgress.peopleAhead === 0 ? 'your-turn' : queueProgress.peopleAhead <= 2 ? 'approaching' : 'waiting'
   const queueProgressPercent = Math.round(((demoQueue.peopleWaiting - queueProgress.peopleAhead) / demoQueue.peopleWaiting) * 100)
+  const dashboardPlaceInfo = publicPlaces.find((place) => place.id === activeQueue?.place) || null
+  const dashboardServiceInfo = dashboardPlaceInfo ? serviceCatalog[dashboardPlaceInfo.id]?.find((service) => service.id === activeQueue?.service) || null : null
+  const dashboardPeople = dashboardServiceInfo ? personCatalog[dashboardServiceInfo.id] || [] : []
+  const dashboardPersonInfo = dashboardPeople.find((person) => person.id === activeQueue?.person) || null
+  const filteredHistory = queueHistory.filter((item) => historyFilter === 'all' || item.status === historyFilter)
+  const unreadCount = notifications.filter((notification) => !notification.read).length
+
+  const markAllNotificationsRead = () => setNotifications((current) => current.map((notification) => ({ ...notification, read: true })))
+  const markNotificationRead = (notificationId) => setNotifications((current) => current.map((notification) => notification.id === notificationId ? { ...notification, read: true } : notification))
+  const notificationLabel = (notification) => {
+    if (notification.message === 'queueJoined') return content.queueJoined
+    if (notification.message === 'itsYourTurn') return content.itsYourTurn
+    if (notification.message === 'yourTurnApproaching') return content.yourTurnApproaching
+    return `${notification.peopleAhead} ${content.peopleAheadNotice}`
+  }
 
   return (
     <div className="app-shell">
@@ -543,6 +704,9 @@ function App() {
           <div className="nav-links">
             <button type="button" className="nav-link" onClick={handleGoToLanding}>
               {content.home}
+            </button>
+            <button type="button" className="nav-link" onClick={handleGoToDashboard}>
+              {content.dashboard}
             </button>
             <button
               type="button"
@@ -664,6 +828,94 @@ function App() {
               <p>{content.futureText}</p>
             </div>
           </section>
+        </main>
+      )}
+
+      {view === 'dashboard' && (
+        <main className="dashboard-screen container">
+          <div className="dashboard-heading">
+            <div>
+              <span className="eyebrow accent">{content.dashboard}</span>
+              <h2>{content.dashboardTitle}</h2>
+              <p>{content.dashboardWelcome}</p>
+            </div>
+            <button type="button" className="primary-button" onClick={handleGoToSelection}>{content.joinAQueue}</button>
+          </div>
+
+          <section className="dashboard-section">
+            <div className="dashboard-section-heading">
+              <h3>{content.activeQueue}</h3>
+            </div>
+            {activeQueue && dashboardPlaceInfo && dashboardServiceInfo ? (
+              <article className="dashboard-active-card">
+                <div className="dashboard-queue-header">
+                  <div>
+                    <span className="eyebrow accent">{dashboardPlaceInfo.name[language]}</span>
+                    <h3>{dashboardServiceInfo.name[language]}</h3>
+                    {dashboardPersonInfo && <p>{dashboardPersonInfo.name[language]} · {dashboardPersonInfo.role[language]}</p>}
+                  </div>
+                  <span className={`queue-status-badge queue-status-${queueStatus}`}>
+                    {queueStatus === 'your-turn' ? content.itsYourTurn : queueStatus === 'approaching' ? content.yourTurnApproaching : content.waiting}
+                  </span>
+                </div>
+                {dashboardPersonInfo && <div className={`dashboard-availability status-${dashboardPersonInfo.status}`}>● {dashboardPersonInfo.status === 'available' ? content.available : dashboardPersonInfo.status === 'busy' ? content.currentlyBusy : content.notAvailable}</div>}
+                <div className="dashboard-summary-grid">
+                  <div><span>{content.yourQueueToken}</span><strong>{activeQueue.token}</strong></div>
+                  <div><span>{content.nowServing}</span><strong>{currentQueueToken}</strong></div>
+                  <div><span>{content.peopleAhead}</span><strong>{queueProgress.peopleAhead}</strong></div>
+                  <div><span>{content.estimatedWait}</span><strong>{estimatedQueueWait} {language === 'hi' ? 'मिनट' : 'minutes'}</strong></div>
+                </div>
+                <div className="queue-progress-track" role="progressbar" aria-valuenow={queueProgressPercent} aria-valuemin="0" aria-valuemax="100" aria-label={content.queueProgress}><span style={{ width: `${queueProgressPercent}%` }} /></div>
+                <div className="dashboard-actions">
+                  <button type="button" className="primary-button" onClick={handleOpenActiveQueue}>{content.viewQueue}</button>
+                  <button type="button" className="secondary-button leave-queue-button" onClick={handleLeaveQueue}>{content.leaveQueue}</button>
+                </div>
+              </article>
+            ) : (
+              <div className="dashboard-empty-state">
+                <span className="dashboard-empty-icon" aria-hidden="true">☕</span>
+                <h3>{content.noActiveQueue}</h3>
+                <p>{content.noActiveQueueText}</p>
+                <button type="button" className="primary-button" onClick={handleGoToSelection}>{content.joinAQueue}</button>
+              </div>
+            )}
+          </section>
+
+          <div className="dashboard-columns">
+            <section className="dashboard-section dashboard-panel">
+              <div className="dashboard-section-heading">
+                <h3>{content.notifications}{unreadCount > 0 ? ` (${unreadCount})` : ''}</h3>
+                {unreadCount > 0 && <button type="button" className="text-button" onClick={markAllNotificationsRead}>{content.markAllRead}</button>}
+              </div>
+              <div className="notification-list">
+                {notifications.length > 0 ? notifications.map((notification) => (
+                  <button type="button" key={notification.id} className={`notification-item ${notification.read ? '' : 'unread'}`} onClick={() => markNotificationRead(notification.id)}>
+                    <span className="notification-icon" aria-hidden="true">{notification.type === 'your-turn' ? '🎉' : notification.type === 'approaching' ? '🔔' : '✓'}</span>
+                    <span className="notification-copy"><strong>{notificationLabel(notification)}</strong><small>{new Date(notification.time).toLocaleTimeString(language === 'hi' ? 'hi-IN' : 'en-US', { hour: 'numeric', minute: '2-digit' })}</small></span>
+                    {!notification.read && <span className="unread-dot" aria-label={content.unread} />}
+                  </button>
+                )) : <p className="dashboard-muted">{content.noNotifications}</p>}
+              </div>
+            </section>
+
+            <section className="dashboard-section dashboard-panel">
+              <div className="dashboard-section-heading">
+                <h3>{content.queueHistory}</h3>
+                <div className="history-filters">
+                  {['all', 'completed', 'left'].map((filter) => <button type="button" key={filter} className={historyFilter === filter ? 'active' : ''} onClick={() => setHistoryFilter(filter)}>{filter === 'all' ? content.all : filter === 'completed' ? content.completed : content.historyLeft}</button>)}
+                </div>
+              </div>
+              <div className="history-list">
+                {filteredHistory.length > 0 ? filteredHistory.map((item) => {
+                  const historyPlace = publicPlaces.find((place) => place.id === item.place)
+                  const historyService = historyPlace ? serviceCatalog[historyPlace.id]?.find((service) => service.id === item.service) : null
+                  const historyPeople = historyService ? personCatalog[historyService.id] || [] : []
+                  const historyPerson = historyPeople.find((person) => person.id === item.person)
+                  return <article className="history-item" key={item.id}><div><strong>{historyPlace?.name[language] || item.place}</strong><span>{historyService?.name[language] || item.service}</span>{historyPerson && <span>{historyPerson.name[language]}</span>}</div><div><strong>{item.token}</strong><span>{item.status === 'left' ? content.historyLeft : content.completed}</span><small>{new Date(item.timestamp).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US')}</small></div></article>
+                }) : <div className="dashboard-muted"><strong>{content.noQueueHistory}</strong><p>{content.noQueueHistoryText}</p></div>}
+              </div>
+            </section>
+          </div>
         </main>
       )}
 
