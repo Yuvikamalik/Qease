@@ -60,6 +60,19 @@ const translations = {
     leaveQueue: 'Leave Queue',
     leaveQueueConfirm: 'Are you sure you want to leave the queue?',
     queueEmpty: 'Queue information is unavailable for this selection.',
+    choosePersonTitle: 'Choose a Person',
+    choosePersonSubtitle: 'Select the person you want to meet and check their availability.',
+    viewQueue: 'View Queue',
+    currentlyBusy: 'Currently Busy',
+    notAvailable: 'Not Available',
+    available: 'Available',
+    busy: 'Busy',
+    unavailable: 'Not Available',
+    availableNow: 'Available now',
+    servingAnother: 'Currently serving another person',
+    expectedAt: 'Expected at',
+    selectedPersonLabel: 'Selected person',
+    personEmpty: 'No people are available for this service yet.',
   },
   hi: {
     brand: 'QEase',
@@ -120,6 +133,19 @@ const translations = {
     leaveQueue: 'कतार छोड़ें',
     leaveQueueConfirm: 'क्या आप वाकई कतार छोड़ना चाहते हैं?',
     queueEmpty: 'इस चयन के लिए कतार की जानकारी उपलब्ध नहीं है।',
+    choosePersonTitle: 'व्यक्ति चुनें',
+    choosePersonSubtitle: 'जिस व्यक्ति से आप मिलना चाहते हैं उसे चुनें और उनकी उपलब्धता देखें।',
+    viewQueue: 'कतार देखें',
+    currentlyBusy: 'अभी व्यस्त',
+    notAvailable: 'उपलब्ध नहीं',
+    available: 'उपलब्ध',
+    busy: 'व्यस्त',
+    unavailable: 'उपलब्ध नहीं',
+    availableNow: 'अभी उपलब्ध',
+    servingAnother: 'वर्तमान में किसी अन्य व्यक्ति की सेवा कर रहे हैं',
+    expectedAt: 'आने की उम्मीद',
+    selectedPersonLabel: 'चयनित व्यक्ति',
+    personEmpty: 'इस सेवा के लिए अभी कोई व्यक्ति उपलब्ध नहीं है।',
   },
 }
 
@@ -250,7 +276,7 @@ function App() {
     if (typeof window === 'undefined') return 'landing'
     const params = new URLSearchParams(window.location.search)
     const currentView = params.get('view')
-    return currentView === 'selection' || currentView === 'services' || currentView === 'confirmation' || currentView === 'queue' ? currentView : 'landing'
+    return currentView === 'selection' || currentView === 'services' || currentView === 'confirmation' || currentView === 'queue' || currentView === 'person' ? currentView : 'landing'
   })
   const [selectedPlace, setSelectedPlace] = useState(() => {
     if (typeof window === 'undefined') return null
@@ -266,6 +292,10 @@ function App() {
     if (typeof window === 'undefined') return null
     return new URLSearchParams(window.location.search).get('token') || null
   })
+  const [selectedPerson, setSelectedPerson] = useState(() => {
+    if (typeof window === 'undefined') return null
+    return new URLSearchParams(window.location.search).get('person') || null
+  })
 
   const content = useMemo(() => translations[language], [language])
 
@@ -273,11 +303,12 @@ function App() {
     const handlePopState = () => {
       const params = new URLSearchParams(window.location.search)
       const route = params.get('view')
-      const nextView = route === 'selection' || route === 'services' || route === 'confirmation' || route === 'queue' ? route : 'landing'
+      const nextView = route === 'selection' || route === 'services' || route === 'confirmation' || route === 'queue' || route === 'person' ? route : 'landing'
       setView(nextView)
       setSelectedPlace(params.get('place') || null)
       setSelectedService(params.get('service') || null)
       setQueueToken(params.get('token') || null)
+      setSelectedPerson(params.get('person') || null)
     }
 
     window.addEventListener('popstate', handlePopState)
@@ -291,6 +322,8 @@ function App() {
       params.delete('view')
       params.delete('place')
       params.delete('service')
+      params.delete('person')
+      params.delete('token')
     } else if (nextView === 'selection') {
       params.set('view', 'selection')
       if (nextPlace) params.set('place', nextPlace)
@@ -302,12 +335,14 @@ function App() {
       else params.delete('place')
       if (nextService) params.set('service', nextService)
       else params.delete('service')
+      params.delete('person')
     } else if (nextView === 'confirmation') {
       params.set('view', 'confirmation')
       if (nextPlace) params.set('place', nextPlace)
       else params.delete('place')
       if (nextService) params.set('service', nextService)
       else params.delete('service')
+      params.delete('person')
       params.delete('token')
     } else if (nextView === 'queue') {
       params.set('view', 'queue')
@@ -317,6 +352,18 @@ function App() {
       else params.delete('service')
       if (nextService && queueToken) params.set('token', queueToken)
       else params.delete('token')
+      if (nextService && selectedPerson) params.set('person', selectedPerson)
+      else params.delete('person')
+    } else if (nextView === 'person') {
+      params.set('view', 'person')
+      if (nextPlace) params.set('place', nextPlace)
+      else params.delete('place')
+      if (nextService) params.set('service', nextService)
+      else params.delete('service')
+      if (queueToken) params.set('token', queueToken)
+      else params.delete('token')
+      if (selectedPerson) params.set('person', selectedPerson)
+      else params.delete('person')
     }
 
     const queryString = params.toString()
@@ -327,6 +374,7 @@ function App() {
     setSelectedPlace(nextPlace || null)
     setSelectedService(nextService || null)
     setQueueToken(nextView === 'queue' ? queueToken : null)
+    setSelectedPerson(nextView === 'person' || nextView === 'queue' ? selectedPerson : null)
   }
 
   const handleGoToLanding = () => {
@@ -382,6 +430,27 @@ function App() {
     setQueueToken(nextToken)
   }
 
+  const handleChoosePerson = () => {
+    if (!selectedPlace || !selectedService) return
+    updateRoute('person', selectedPlace, selectedService)
+  }
+
+  const handlePersonSelection = (personId) => {
+    setSelectedPerson(personId)
+    const params = new URLSearchParams(window.location.search)
+    params.set('view', 'person')
+    params.set('place', selectedPlace)
+    params.set('service', selectedService)
+    params.set('person', personId)
+    if (queueToken) params.set('token', queueToken)
+    window.history.pushState({}, '', `${window.location.pathname}?${params.toString()}`)
+  }
+
+  const handlePersonContinue = () => {
+    if (!selectedPerson) return
+    updateRoute('queue', selectedPlace, selectedService)
+  }
+
   const handleLeaveQueue = () => {
     if (!window.confirm(content.leaveQueueConfirm)) return
     updateRoute('services', selectedPlace, selectedService)
@@ -398,6 +467,8 @@ function App() {
     selectedPlaceInfo && selectedService
       ? serviceCatalog[selectedPlaceInfo.id]?.find((service) => service.id === selectedService) || null
       : null
+  const peopleForService = selectedServiceInfo ? personCatalog[selectedServiceInfo.id] || [] : []
+  const selectedPersonInfo = peopleForService.find((person) => person.id === selectedPerson) || null
 
   return (
     <div className="app-shell">
@@ -657,6 +728,17 @@ function App() {
             <strong>{selectedServiceInfo.name[language]}</strong>
           </div>
 
+          {selectedPersonInfo && (
+            <div className="selected-person-summary">
+              <span className="person-avatar" aria-hidden="true">{selectedPersonInfo.icon}</span>
+              <div>
+                <span>{content.selectedPersonLabel}</span>
+                <strong>{selectedPersonInfo.name[language]}</strong>
+                <small>{selectedPersonInfo.role[language]}</small>
+              </div>
+            </div>
+          )}
+
           {!queueToken ? (
             <section className="queue-info-panel" aria-labelledby="queue-info-title">
               <div className="queue-panel-heading">
@@ -693,6 +775,9 @@ function App() {
               <button type="button" className="primary-button queue-join-button" onClick={handleJoinQueue}>
                 {content.joinQueue}
               </button>
+              <button type="button" className="secondary-button queue-person-button" onClick={handleChoosePerson}>
+                {content.choosePersonTitle}
+              </button>
             </section>
           ) : (
             <section className="joined-queue-panel" aria-labelledby="joined-queue-title">
@@ -717,8 +802,86 @@ function App() {
               <button type="button" className="secondary-button leave-queue-button" onClick={handleLeaveQueue}>
                 {content.leaveQueue}
               </button>
+              <button type="button" className="secondary-button queue-person-button" onClick={handleChoosePerson}>
+                {content.choosePersonTitle}
+              </button>
             </section>
           )}
+        </main>
+      )}
+
+      {view === 'person' && selectedPlaceInfo && selectedServiceInfo && (
+        <main className="selection-screen container person-screen">
+          <div className="screen-header">
+            <div>
+              <span className="eyebrow accent">{content.selectedPlaceLabel}</span>
+              <h2>{content.choosePersonTitle}</h2>
+            </div>
+            <button type="button" className="secondary-button" onClick={() => updateRoute('queue', selectedPlace, selectedService)}>
+              {content.backLabel}
+            </button>
+          </div>
+
+          <p className="screen-subtitle">{content.choosePersonSubtitle}</p>
+          <div className="queue-selection-summary">
+            <span>{selectedPlaceInfo.name[language]}</span>
+            <strong>{selectedServiceInfo.name[language]}</strong>
+          </div>
+
+          {peopleForService.length > 0 ? (
+            <>
+              <div className="person-grid">
+                {peopleForService.map((person) => {
+                  const isSelected = selectedPerson === person.id
+                  const statusText = person.status === 'available' ? content.available : person.status === 'busy' ? content.currentlyBusy : content.notAvailable
+                  const detailText = person.status === 'available' ? content.availableNow : person.status === 'busy' ? content.servingAnother : `${content.expectedAt} ${person.expectedAt}`
+
+                  return (
+                    <button
+                      type="button"
+                      key={person.id}
+                      className={`person-card ${isSelected ? 'selected' : ''}`}
+                      onClick={() => handlePersonSelection(person.id)}
+                      aria-pressed={isSelected}
+                    >
+                      <span className="person-avatar" aria-hidden="true">{person.icon}</span>
+                      <span className="person-copy">
+                        <strong>{person.name[language]}</strong>
+                        <span>{person.role[language]}</span>
+                        <span>{selectedServiceInfo.name[language]}</span>
+                      </span>
+                      <span className={`availability availability-${person.status}`}>
+                        <span className="availability-dot" aria-hidden="true" />
+                        <strong>{statusText}</strong>
+                        <small>{detailText}</small>
+                      </span>
+                      <span className="person-action" aria-hidden="true">{isSelected ? '✓' : '+'}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="selection-footer">
+                <button type="button" className="primary-button full-width" onClick={handlePersonContinue} disabled={!selectedPerson}>
+                  {content.viewQueue}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="service-placeholder">
+              <p>{content.personEmpty}</p>
+            </div>
+          )}
+        </main>
+      )}
+
+      {view === 'person' && (!selectedPlaceInfo || !selectedServiceInfo) && (
+        <main className="selection-screen container person-screen">
+          <div className="service-placeholder">
+            <p>{content.personEmpty}</p>
+            <button type="button" className="primary-button" onClick={handleGoToSelection}>
+              {content.getStarted}
+            </button>
+          </div>
         </main>
       )}
 
@@ -907,6 +1070,34 @@ const serviceCatalog = {
       name: { en: 'Customer Support', hi: 'ग्राहक सहायता' },
       description: { en: 'Get help with food, service, or orders.', hi: 'भोजन, सेवा या ऑर्डर के लिए सहायता प्राप्त करें।' },
     },
+  ],
+}
+
+const personCatalog = {
+  'doctor-consultation': [
+    { id: 'ananya-sharma', icon: '👩‍⚕️', name: { en: 'Dr. Ananya Sharma', hi: 'डॉ. अनन्या शर्मा' }, role: { en: 'Senior Physician', hi: 'वरिष्ठ चिकित्सक' }, status: 'available' },
+    { id: 'rahul-verma', icon: '👨‍⚕️', name: { en: 'Dr. Rahul Verma', hi: 'डॉ. राहुल वर्मा' }, role: { en: 'Cardiologist', hi: 'हृदय रोग विशेषज्ञ' }, status: 'busy' },
+    { id: 'priya-mehta', icon: '👩‍⚕️', name: { en: 'Dr. Priya Mehta', hi: 'डॉ. प्रिया मेहता' }, role: { en: 'General Physician', hi: 'सामान्य चिकित्सक' }, status: 'unavailable', expectedAt: '3:00 PM' },
+  ],
+  pharmacy: [
+    { id: 'neha-pharmacist', icon: '👩‍🔬', name: { en: 'Pharmacist Neha', hi: 'फार्मासिस्ट नेहा' }, role: { en: 'Pharmacy Specialist', hi: 'फार्मेसी विशेषज्ञ' }, status: 'available' },
+    { id: 'amit-pharmacist', icon: '👨‍🔬', name: { en: 'Pharmacist Amit', hi: 'फार्मासिस्ट अमित' }, role: { en: 'Pharmacy Specialist', hi: 'फार्मेसी विशेषज्ञ' }, status: 'busy' },
+  ],
+  'customer-support': [
+    { id: 'rohan-officer', icon: '👨‍💼', name: { en: 'Customer Officer Rohan', hi: 'ग्राहक अधिकारी रोहन' }, role: { en: 'Customer Service Officer', hi: 'ग्राहक सेवा अधिकारी' }, status: 'available' },
+    { id: 'priya-officer', icon: '👩‍💼', name: { en: 'Customer Officer Priya', hi: 'ग्राहक अधिकारी प्रिया' }, role: { en: 'Customer Service Officer', hi: 'ग्राहक सेवा अधिकारी' }, status: 'busy' },
+  ],
+  administration: [
+    { id: 'meena-admin', icon: '👩‍💼', name: { en: 'Admin Officer Meena', hi: 'प्रशासन अधिकारी मीना' }, role: { en: 'Administration Officer', hi: 'प्रशासन अधिकारी' }, status: 'available' },
+    { id: 'arjun-admin', icon: '👨‍💼', name: { en: 'Admin Officer Arjun', hi: 'प्रशासन अधिकारी अर्जुन' }, role: { en: 'Administration Officer', hi: 'प्रशासन अधिकारी' }, status: 'unavailable', expectedAt: '3:00 PM' },
+  ],
+  'general-enquiry': [
+    { id: 'rajesh-officer', icon: '👨‍💼', name: { en: 'Officer Rajesh', hi: 'अधिकारी राजेश' }, role: { en: 'Public Service Officer', hi: 'लोक सेवा अधिकारी' }, status: 'available' },
+    { id: 'sunita-officer', icon: '👩‍💼', name: { en: 'Officer Sunita', hi: 'अधिकारी सुनीता' }, role: { en: 'Public Service Officer', hi: 'लोक सेवा अधिकारी' }, status: 'busy' },
+  ],
+  'customer-support-restaurant': [
+    { id: 'amit-manager', icon: '👨‍🍳', name: { en: 'Manager Amit', hi: 'मैनेजर अमित' }, role: { en: 'Restaurant Manager', hi: 'रेस्टोरेंट मैनेजर' }, status: 'available' },
+    { id: 'neha-manager', icon: '👩‍🍳', name: { en: 'Manager Neha', hi: 'मैनेजर नेहा' }, role: { en: 'Restaurant Manager', hi: 'रेस्टोरेंट मैनेजर' }, status: 'busy' },
   ],
 }
 
