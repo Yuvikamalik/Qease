@@ -524,6 +524,10 @@ button {
   color: #17324d;
 }
 
+.selected-person-status.status-available { color: #198c68 !important; }
+.selected-person-status.status-busy { color: #a66a00 !important; }
+.selected-person-status.status-unavailable { color: #a13d4f !important; }
+
 .queue-info-panel,
 .joined-queue-panel {
   background: rgba(255, 255, 255, 0.8);
@@ -548,6 +552,21 @@ button {
   color: #17324d;
   font-size: 1.8rem;
 }
+
+.queue-status-badge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 240px;
+  padding: 9px 12px;
+  border-radius: 999px;
+  font-size: 0.86rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.queue-status-waiting { background: #edf2ff; color: #5169d9; }
+.queue-status-approaching { background: #fff3d6; color: #976000; }
+.queue-status-your-turn { background: #dff5eb; color: #147b5b; }
 
 .queue-live-indicator {
   color: #198c68;
@@ -638,7 +657,7 @@ button {
 
 .joined-queue-details {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 14px;
   margin: 22px 0;
 }
@@ -663,12 +682,62 @@ button {
   font-size: 1.2rem;
 }
 
+.queue-progress-block {
+  margin: 22px 0;
+}
+
+.queue-progress-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 9px;
+  color: #536d86;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.queue-progress-label strong {
+  color: #17324d;
+}
+
+.queue-progress-track {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e6edf6;
+}
+
+.queue-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1f7a8c, #5c7cfa);
+  transition: width 0.35s ease;
+}
+
+.queue-alert {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 18px;
+  padding: 13px 15px;
+  border: 1px solid rgba(31, 122, 140, 0.2);
+  border-radius: 14px;
+  background: #e8f7f3;
+  color: #176a61;
+  font-weight: 800;
+}
+
 .leave-queue-button {
   color: #a13d4f;
   border-color: rgba(161, 61, 79, 0.22);
 }
 
 .queue-person-button {
+  margin: 12px 0 0 10px;
+}
+
+.pause-queue-button {
   margin: 12px 0 0 10px;
 }
 
@@ -902,6 +971,11 @@ button {
   }
 
   .queue-person-button {
+    width: 100%;
+    margin: 12px 0 0;
+  }
+
+  .pause-queue-button {
     width: 100%;
     margin: 12px 0 0;
   }

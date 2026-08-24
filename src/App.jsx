@@ -73,6 +73,15 @@ const translations = {
     expectedAt: 'Expected at',
     selectedPersonLabel: 'Selected person',
     personEmpty: 'No people are available for this service yet.',
+    liveQueueStatus: 'Live queue status',
+    queueProgress: 'Queue progress',
+    pauseSimulation: 'Pause Queue Simulation',
+    resumeSimulation: 'Resume Queue Simulation',
+    yourTurnApproaching: 'Your turn is approaching!',
+    itsYourTurn: "It's your turn!",
+    completed: 'Completed',
+    queueLeft: 'Queue left',
+    minutesPerPerson: 'minutes/person',
   },
   hi: {
     brand: 'QEase',
@@ -146,6 +155,15 @@ const translations = {
     expectedAt: 'आने की उम्मीद',
     selectedPersonLabel: 'चयनित व्यक्ति',
     personEmpty: 'इस सेवा के लिए अभी कोई व्यक्ति उपलब्ध नहीं है।',
+    liveQueueStatus: 'लाइव कतार स्थिति',
+    queueProgress: 'कतार प्रगति',
+    pauseSimulation: 'कतार सिमुलेशन रोकें',
+    resumeSimulation: 'कतार सिमुलेशन फिर शुरू करें',
+    yourTurnApproaching: 'आपकी बारी नज़दीक है!',
+    itsYourTurn: 'अब आपकी बारी है!',
+    completed: 'पूर्ण',
+    queueLeft: 'कतार छोड़ दी',
+    minutesPerPerson: 'मिनट/व्यक्ति',
   },
 }
 
@@ -296,6 +314,12 @@ function App() {
     if (typeof window === 'undefined') return null
     return new URLSearchParams(window.location.search).get('person') || null
   })
+  const [queueProgress, setQueueProgress] = useState({
+    servingNumber: 18,
+    peopleAhead: demoQueue.peopleWaiting,
+  })
+  const [queuePaused, setQueuePaused] = useState(false)
+  const [queueAlert, setQueueAlert] = useState(null)
 
   const content = useMemo(() => translations[language], [language])
 
@@ -314,6 +338,31 @@ function App() {
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
+
+  useEffect(() => {
+    if (view !== 'queue' || !queueToken || queuePaused || queueProgress.peopleAhead <= 0) return undefined
+
+    let alertTimeout
+    const timer = window.setInterval(() => {
+      setQueueProgress((current) => {
+        const nextPeopleAhead = Math.max(0, current.peopleAhead - 1)
+        const nextServingNumber = current.servingNumber + 1
+
+        if (nextPeopleAhead === 2 || nextPeopleAhead === 0) {
+          setQueueAlert(nextPeopleAhead === 0 ? 'your-turn' : 'approaching')
+          window.clearTimeout(alertTimeout)
+          alertTimeout = window.setTimeout(() => setQueueAlert(null), 5000)
+        }
+
+        return { servingNumber: nextServingNumber, peopleAhead: nextPeopleAhead }
+      })
+    }, 10000)
+
+    return () => {
+      window.clearInterval(timer)
+      window.clearTimeout(alertTimeout)
+    }
+  }, [queuePaused, queueProgress.peopleAhead, queueToken, view])
 
   const updateRoute = (nextView, nextPlace = selectedPlace, nextService = selectedService) => {
     const params = new URLSearchParams(window.location.search)
@@ -427,6 +476,9 @@ function App() {
     params.set('service', selectedService)
     params.set('token', nextToken)
     window.history.pushState({}, '', `${window.location.pathname}?${params.toString()}`)
+    setQueueProgress({ servingNumber: 18, peopleAhead: demoQueue.peopleWaiting })
+    setQueuePaused(false)
+    setQueueAlert(null)
     setQueueToken(nextToken)
   }
 
@@ -454,6 +506,9 @@ function App() {
   const handleLeaveQueue = () => {
     if (!window.confirm(content.leaveQueueConfirm)) return
     updateRoute('services', selectedPlace, selectedService)
+    setQueuePaused(true)
+    setQueueAlert(null)
+    setQueueProgress({ servingNumber: 18, peopleAhead: demoQueue.peopleWaiting })
   }
 
   const sections = [
@@ -469,6 +524,10 @@ function App() {
       : null
   const peopleForService = selectedServiceInfo ? personCatalog[selectedServiceInfo.id] || [] : []
   const selectedPersonInfo = peopleForService.find((person) => person.id === selectedPerson) || null
+  const currentQueueToken = `A-${queueProgress.servingNumber}`
+  const estimatedQueueWait = queueProgress.peopleAhead * demoQueue.averageServiceTime
+  const queueStatus = queueProgress.peopleAhead === 0 ? 'your-turn' : queueProgress.peopleAhead <= 2 ? 'approaching' : 'waiting'
+  const queueProgressPercent = Math.round(((demoQueue.peopleWaiting - queueProgress.peopleAhead) / demoQueue.peopleWaiting) * 100)
 
   return (
     <div className="app-shell">
@@ -735,6 +794,9 @@ function App() {
                 <span>{content.selectedPersonLabel}</span>
                 <strong>{selectedPersonInfo.name[language]}</strong>
                 <small>{selectedPersonInfo.role[language]}</small>
+                <small className={`selected-person-status status-${selectedPersonInfo.status}`}>
+                  ● {selectedPersonInfo.status === 'available' ? content.available : selectedPersonInfo.status === 'busy' ? content.currentlyBusy : content.notAvailable}
+                </small>
               </div>
             </div>
           )}
@@ -782,25 +844,48 @@ function App() {
           ) : (
             <section className="joined-queue-panel" aria-labelledby="joined-queue-title">
               <div className="joined-queue-heading">
-                <span className="eyebrow accent">{content.waiting}</span>
-                <h3 id="joined-queue-title">{content.yourQueueToken}</h3>
+                <div>
+                  <span className="eyebrow accent">{content.liveQueueStatus}</span>
+                  <h3 id="joined-queue-title">{content.liveQueueStatus}</h3>
+                </div>
+                <span className={`queue-status-badge queue-status-${queueStatus}`}>
+                  {queueStatus === 'your-turn' ? content.itsYourTurn : queueStatus === 'approaching' ? content.yourTurnApproaching : content.waiting}
+                </span>
               </div>
 
               <div className="digital-token-card">
                 <span>{content.yourQueueToken}</span>
                 <strong>{queueToken}</strong>
-                <div className="token-status"><span className="status-dot" aria-hidden="true" />{content.waiting}</div>
+                <div className="token-status"><span className="status-dot" aria-hidden="true" />{queueStatus === 'your-turn' ? content.itsYourTurn : queueStatus === 'approaching' ? content.yourTurnApproaching : content.waiting}</div>
               </div>
 
               <div className="joined-queue-details">
-                <div><span>{content.nowServing}</span><strong>{demoQueue.currentToken}</strong></div>
-                <div><span>{content.peopleAhead}</span><strong>{demoQueue.peopleWaiting}</strong></div>
-                <div><span>{content.estimatedWait}</span><strong>{demoQueue.estimatedWait} {language === 'hi' ? 'मिनट' : 'minutes'}</strong></div>
-                <div><span>{content.status}</span><strong>{content.waiting}</strong></div>
+                <div><span>{content.nowServing}</span><strong>{currentQueueToken}</strong></div>
+                <div><span>{content.peopleAhead}</span><strong>{queueProgress.peopleAhead}</strong></div>
+                <div><span>{content.estimatedWait}</span><strong>{estimatedQueueWait} {language === 'hi' ? 'मिनट' : 'minutes'}</strong></div>
+                <div><span>{content.averageServiceTime}</span><strong>{demoQueue.averageServiceTime} {content.minutesPerPerson}</strong></div>
+                <div><span>{content.status}</span><strong>{queueStatus === 'your-turn' ? content.itsYourTurn : queueStatus === 'approaching' ? content.yourTurnApproaching : content.waiting}</strong></div>
               </div>
+
+              <div className="queue-progress-block">
+                <div className="queue-progress-label"><span>{content.queueProgress}</span><strong>{queueProgressPercent}%</strong></div>
+                <div className="queue-progress-track" role="progressbar" aria-valuenow={queueProgressPercent} aria-valuemin="0" aria-valuemax="100" aria-label={content.queueProgress}>
+                  <span style={{ width: `${queueProgressPercent}%` }} />
+                </div>
+              </div>
+
+              {queueAlert && (
+                <div className="queue-alert" role="status">
+                  <span aria-hidden="true">🔔</span>
+                  {queueAlert === 'your-turn' ? content.itsYourTurn : content.yourTurnApproaching}
+                </div>
+              )}
 
               <button type="button" className="secondary-button leave-queue-button" onClick={handleLeaveQueue}>
                 {content.leaveQueue}
+              </button>
+              <button type="button" className="secondary-button pause-queue-button" onClick={() => setQueuePaused((paused) => !paused)}>
+                {queuePaused ? content.resumeSimulation : content.pauseSimulation}
               </button>
               <button type="button" className="secondary-button queue-person-button" onClick={handleChoosePerson}>
                 {content.choosePersonTitle}
