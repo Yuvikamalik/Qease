@@ -38,6 +38,12 @@ const translations = {
     servicesTitle: 'Services for',
     servicesPlaceholder: 'Service selection will be available in the next phase.',
     selectionMessage: 'Selected place',
+    chooseServiceTitle: 'Choose a Service',
+    chooseServiceSubtitle: 'Select the exact service you want to access.',
+    selectedPlaceLabel: 'Selected place',
+    readyToJoinTitle: 'Ready to continue',
+    readyToJoinText: 'You have selected the following service for your visit.',
+    placeholderContinue: 'Back to home',
   },
   hi: {
     brand: 'QEase',
@@ -76,6 +82,12 @@ const translations = {
     servicesTitle: 'की सेवाएँ',
     servicesPlaceholder: 'सेवा चयन अगले चरण में उपलब्ध होगा।',
     selectionMessage: 'चयनित स्थान',
+    chooseServiceTitle: 'सेवा चुनें',
+    chooseServiceSubtitle: 'उस सटीक सेवा का चयन करें जिसे आप एक्सेस करना चाहते हैं।',
+    selectedPlaceLabel: 'चयनित स्थान',
+    readyToJoinTitle: 'आगे बढ़ने के लिए तैयार',
+    readyToJoinText: 'आपने अपनी यात्रा के लिए निम्नलिखित सेवा चुन ली है।',
+    placeholderContinue: 'होम पर वापस जाएँ',
   },
 }
 
@@ -199,12 +211,17 @@ function App() {
     if (typeof window === 'undefined') return 'landing'
     const params = new URLSearchParams(window.location.search)
     const currentView = params.get('view')
-    return currentView === 'selection' || currentView === 'services' ? currentView : 'landing'
+    return currentView === 'selection' || currentView === 'services' || currentView === 'confirmation' ? currentView : 'landing'
   })
   const [selectedPlace, setSelectedPlace] = useState(() => {
     if (typeof window === 'undefined') return null
     const params = new URLSearchParams(window.location.search)
     return params.get('place') || null
+  })
+  const [selectedService, setSelectedService] = useState(() => {
+    if (typeof window === 'undefined') return null
+    const params = new URLSearchParams(window.location.search)
+    return params.get('service') || null
   })
 
   const content = useMemo(() => translations[language], [language])
@@ -213,27 +230,39 @@ function App() {
     const handlePopState = () => {
       const params = new URLSearchParams(window.location.search)
       const route = params.get('view')
-      setView(route === 'selection' || route === 'services' ? route : 'landing')
+      const nextView = route === 'selection' || route === 'services' || route === 'confirmation' ? route : 'landing'
+      setView(nextView)
       setSelectedPlace(params.get('place') || null)
+      setSelectedService(params.get('service') || null)
     }
 
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
-  const updateRoute = (nextView, nextPlace = selectedPlace) => {
+  const updateRoute = (nextView, nextPlace = selectedPlace, nextService = selectedService) => {
     const params = new URLSearchParams(window.location.search)
 
     if (nextView === 'landing') {
       params.delete('view')
       params.delete('place')
-    } else {
-      params.set('view', nextView)
-      if (nextPlace) {
-        params.set('place', nextPlace)
-      } else {
-        params.delete('place')
-      }
+      params.delete('service')
+    } else if (nextView === 'selection') {
+      params.set('view', 'selection')
+      if (nextPlace) params.set('place', nextPlace)
+      else params.delete('place')
+      params.delete('service')
+    } else if (nextView === 'services') {
+      params.set('view', 'services')
+      if (nextPlace) params.set('place', nextPlace)
+      else params.delete('place')
+      params.delete('service')
+    } else if (nextView === 'confirmation') {
+      params.set('view', 'confirmation')
+      if (nextPlace) params.set('place', nextPlace)
+      else params.delete('place')
+      if (nextService) params.set('service', nextService)
+      else params.delete('service')
     }
 
     const queryString = params.toString()
@@ -242,31 +271,48 @@ function App() {
 
     setView(nextView)
     setSelectedPlace(nextPlace || null)
+    setSelectedService(nextService || null)
   }
 
   const handleGoToLanding = () => {
-    updateRoute('landing', null)
+    updateRoute('landing', null, null)
     setTimeout(() => {
       document.getElementById('home')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 0)
   }
 
   const handleGoToSelection = () => {
-    updateRoute('selection', selectedPlace)
+    updateRoute('selection', selectedPlace, null)
   }
 
   const handleContinue = () => {
     if (!selectedPlace) return
-    updateRoute('services', selectedPlace)
+    updateRoute('services', selectedPlace, null)
   }
 
   const handlePlaceSelection = (placeId) => {
     setSelectedPlace(placeId)
+    setSelectedService(null)
     const params = new URLSearchParams(window.location.search)
     params.set('view', 'selection')
     params.set('place', placeId)
+    params.delete('service')
     const queryString = params.toString()
     window.history.pushState({}, '', `${window.location.pathname}${queryString ? `?${queryString}` : ''}`)
+  }
+
+  const handleServiceSelection = (serviceId) => {
+    setSelectedService(serviceId)
+    const params = new URLSearchParams(window.location.search)
+    params.set('view', 'services')
+    params.set('service', serviceId)
+    const queryString = params.toString()
+    window.history.pushState({}, '', `${window.location.pathname}${queryString ? `?${queryString}` : ''}`)
+  }
+
+  const handleServiceContinue = () => {
+    if (!selectedPlace || !selectedService) return
+    updateRoute('confirmation', selectedPlace, selectedService)
   }
 
   const sections = [
@@ -276,6 +322,10 @@ function App() {
   ]
 
   const selectedPlaceInfo = publicPlaces.find((place) => place.id === selectedPlace) || null
+  const selectedServiceInfo =
+    selectedPlaceInfo && selectedService
+      ? serviceCatalog[selectedPlaceInfo.id]?.find((service) => service.id === selectedService) || null
+      : null
 
   return (
     <div className="app-shell">
@@ -471,18 +521,240 @@ function App() {
                 {content.servicesTitle} {selectedPlaceInfo.name[language]}
               </h2>
             </div>
-            <button type="button" className="secondary-button" onClick={() => updateRoute('selection', selectedPlace)}>
+            <button type="button" className="secondary-button" onClick={() => updateRoute('selection', selectedPlace, null)}>
               {content.backLabel}
             </button>
           </div>
 
-          <div className="service-placeholder">
-            <p>{selectedPlaceInfo.name[language]} {content.servicesPlaceholder}</p>
+          <p className="screen-subtitle">{content.chooseServiceSubtitle}</p>
+
+          <div className="selected-place-row">
+            <span>{content.selectedPlaceLabel}</span>
+            <strong>{selectedPlaceInfo.name[language]}</strong>
+          </div>
+
+          <div className="selection-grid service-grid">
+            {serviceCatalog[selectedPlaceInfo.id].map((service) => {
+              const isSelected = selectedService === service.id
+
+              return (
+                <button
+                  type="button"
+                  key={service.id}
+                  className={`service-card ${isSelected ? 'selected' : ''}`}
+                  onClick={() => handleServiceSelection(service.id)}
+                  aria-pressed={isSelected}
+                >
+                  <div className="service-icon" aria-hidden="true">
+                    {service.icon}
+                  </div>
+                  <div className="service-copy">
+                    <h3>{service.name[language]}</h3>
+                    <p>{service.description[language]}</p>
+                  </div>
+                  <span className="service-action">{isSelected ? '✓' : '+'}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="selection-footer">
+            <button type="button" className="primary-button full-width" onClick={handleServiceContinue} disabled={!selectedService}>
+              {content.continueLabel}
+            </button>
+          </div>
+        </main>
+      )}
+
+      {view === 'confirmation' && selectedPlaceInfo && selectedServiceInfo && (
+        <main className="selection-screen container confirmation-screen">
+          <div className="screen-header">
+            <div>
+              <span className="eyebrow accent">{content.readyToJoinTitle}</span>
+              <h2>{content.readyToJoinTitle}</h2>
+            </div>
+            <button type="button" className="secondary-button" onClick={() => updateRoute('services', selectedPlace, selectedService)}>
+              {content.backLabel}
+            </button>
+          </div>
+
+          <div className="confirmation-panel">
+            <p className="confirmation-intro">{content.readyToJoinText}</p>
+            <div className="confirmation-box">
+              <span>{selectedPlaceInfo.name[language]}</span>
+              <strong>{selectedServiceInfo.name[language]}</strong>
+            </div>
+            <button type="button" className="primary-button" onClick={() => updateRoute('landing', null, null)}>
+              {content.placeholderContinue}
+            </button>
           </div>
         </main>
       )}
     </div>
   )
+}
+
+const serviceCatalog = {
+  hospital: [
+    {
+      id: 'doctor-consultation',
+      icon: '🩺',
+      name: { en: 'Doctor Consultation', hi: 'डॉक्टर से परामर्श' },
+      description: { en: 'Meet a doctor for consultation.', hi: 'डॉक्टर से परामर्श के लिए कतार में शामिल हों।' },
+    },
+    {
+      id: 'diagnostic-tests',
+      icon: '🧪',
+      name: { en: 'Diagnostic Tests', hi: 'जांच / डायग्नोस्टिक टेस्ट' },
+      description: { en: 'Book a test and check your queue status.', hi: 'परीक्षण बुक करें और अपनी कतार की स्थिति देखें।' },
+    },
+    {
+      id: 'pharmacy',
+      icon: '💊',
+      name: { en: 'Pharmacy', hi: 'फार्मेसी' },
+      description: { en: 'Collect medicines and prescription support.', hi: 'दवाइयाँ और प्रिस्क्रिप्शन सहायता प्राप्त करें।' },
+    },
+    {
+      id: 'registration',
+      icon: '📝',
+      name: { en: 'Registration', hi: 'पंजीकरण' },
+      description: { en: 'Register for appointments and intake forms.', hi: 'अपॉइंटमेंट और इन्टेक फॉर्म के लिए पंजीकरण करें।' },
+    },
+    {
+      id: 'billing',
+      icon: '💳',
+      name: { en: 'Billing', hi: 'बिलिंग' },
+      description: { en: 'Complete payment and billing steps.', hi: 'भुगतान और बिलिंग चरण पूरे करें।' },
+    },
+  ],
+  bank: [
+    {
+      id: 'cash-deposit',
+      icon: '💵',
+      name: { en: 'Cash Deposit', hi: 'नकद जमा' },
+      description: { en: 'Deposit cash for savings or account services.', hi: 'बचत या खाता सेवाओं के लिए नकद जमा करें।' },
+    },
+    {
+      id: 'cash-withdrawal',
+      icon: '🏧',
+      name: { en: 'Cash Withdrawal', hi: 'नकद निकासी' },
+      description: { en: 'Withdraw cash from your account quickly.', hi: 'अपने खाते से नकद जल्दी निकासी करें।' },
+    },
+    {
+      id: 'account-services',
+      icon: '📒',
+      name: { en: 'Account Services', hi: 'खाता सेवाएँ' },
+      description: { en: 'Update accounts and banking details.', hi: 'खाते और बैंकिंग विवरण अपडेट करें।' },
+    },
+    {
+      id: 'loan-services',
+      icon: '🏦',
+      name: { en: 'Loan Services', hi: 'ऋण सेवाएँ' },
+      description: { en: 'Discuss loan applications and status.', hi: 'ऋण आवेदन और स्थिति पर चर्चा करें।' },
+    },
+    {
+      id: 'customer-support',
+      icon: '🤝',
+      name: { en: 'Customer Support', hi: 'ग्राहक सहायता' },
+      description: { en: 'Get help with banking queries and issues.', hi: 'बैंकिंग प्रश्नों और समस्याओं के लिए सहायता प्राप्त करें।' },
+    },
+  ],
+  school: [
+    {
+      id: 'admissions',
+      icon: '🎓',
+      name: { en: 'Admissions', hi: 'प्रवेश' },
+      description: { en: 'Manage enrollment and admission requests.', hi: 'नामांकन और प्रवेश अनुरोध प्रबंधित करें।' },
+    },
+    {
+      id: 'student-services',
+      icon: '📚',
+      name: { en: 'Student Services', hi: 'छात्र सेवाएँ' },
+      description: { en: 'Resolve student records and support requests.', hi: 'छात्र रिकॉर्ड और सहायता अनुरोध हल करें।' },
+    },
+    {
+      id: 'fee-counter',
+      icon: '💰',
+      name: { en: 'Fee Counter', hi: 'शुल्क काउंटर' },
+      description: { en: 'Pay fees and complete fee-related tasks.', hi: 'शुल्क का भुगतान करें और शुल्क से संबंधित कार्य पूरे करें।' },
+    },
+    {
+      id: 'certificates',
+      icon: '📜',
+      name: { en: 'Certificates', hi: 'प्रमाण पत्र' },
+      description: { en: 'Request certificates and academic documents.', hi: 'प्रमाण पत्र और शैक्षणिक दस्तावेज़ अनुरोध करें।' },
+    },
+    {
+      id: 'administration',
+      icon: '🏫',
+      name: { en: 'Administration', hi: 'प्रशासन' },
+      description: { en: 'Contact the administration team for help.', hi: 'सहायता के लिए प्रशासन टीम से संपर्क करें।' },
+    },
+  ],
+  government: [
+    {
+      id: 'document-services',
+      icon: '📄',
+      name: { en: 'Document Services', hi: 'दस्तावेज़ सेवाएँ' },
+      description: { en: 'Submit and process official documents.', hi: 'आधिकारिक दस्तावेज़ जमा करें और प्रक्रिया करें।' },
+    },
+    {
+      id: 'certificates-gov',
+      icon: '🪪',
+      name: { en: 'Certificates', hi: 'प्रमाण पत्र' },
+      description: { en: 'Request identity and official certificates.', hi: 'पहचान और आधिकारिक प्रमाण पत्र का अनुरोध करें।' },
+    },
+    {
+      id: 'applications',
+      icon: '📑',
+      name: { en: 'Applications', hi: 'आवेदन' },
+      description: { en: 'Submit applications and status requests.', hi: 'आवेदन और स्थिति अनुरोध जमा करें।' },
+    },
+    {
+      id: 'public-grievance',
+      icon: '🗣️',
+      name: { en: 'Public Grievance', hi: 'जन शिकायत' },
+      description: { en: 'Raise complaints and service issues.', hi: 'शिकायतें और सेवा समस्याएँ दर्ज करें।' },
+    },
+    {
+      id: 'general-enquiry',
+      icon: '❓',
+      name: { en: 'General Enquiry', hi: 'सामान्य पूछताछ' },
+      description: { en: 'Ask general questions about services.', hi: 'सेवाओं के बारे में सामान्य प्रश्न पूछें।' },
+    },
+  ],
+  restaurant: [
+    {
+      id: 'table-reservation',
+      icon: '🪑',
+      name: { en: 'Table Reservation', hi: 'टेबल आरक्षण' },
+      description: { en: 'Reserve a table for your visit.', hi: 'अपनी यात्रा के लिए टेबल आरक्षित करें।' },
+    },
+    {
+      id: 'order-counter',
+      icon: '🧾',
+      name: { en: 'Order Counter', hi: 'ऑर्डर काउंटर' },
+      description: { en: 'Place your order and get assistance.', hi: 'ऑर्डर करें और सहायता प्राप्त करें।' },
+    },
+    {
+      id: 'takeaway',
+      icon: '🥡',
+      name: { en: 'Takeaway', hi: 'टेकअवे' },
+      description: { en: 'Collect food prepared for takeaway.', hi: 'टेकअवे के लिए तैयार भोजन प्राप्त करें।' },
+    },
+    {
+      id: 'billing-restaurant',
+      icon: '💳',
+      name: { en: 'Billing', hi: 'बिलिंग' },
+      description: { en: 'Complete payment at the billing desk.', hi: 'बिलिंग डेस्क पर भुगतान पूरा करें।' },
+    },
+    {
+      id: 'customer-support-restaurant',
+      icon: '🤝',
+      name: { en: 'Customer Support', hi: 'ग्राहक सहायता' },
+      description: { en: 'Get help with food, service, or orders.', hi: 'भोजन, सेवा या ऑर्डर के लिए सहायता प्राप्त करें।' },
+    },
+  ],
 }
 
 export default App
