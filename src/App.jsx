@@ -44,6 +44,22 @@ const translations = {
     readyToJoinTitle: 'Ready to continue',
     readyToJoinText: 'You have selected the following service for your visit.',
     placeholderContinue: 'Back to home',
+    joinQueueTitle: 'Join the Queue',
+    joinQueueSubtitle: 'Check the current queue before joining.',
+    currentQueue: 'Current queue',
+    currentToken: 'Current token',
+    peopleWaiting: 'People waiting',
+    estimatedWait: 'Estimated waiting time',
+    averageServiceTime: 'Average service time',
+    joinQueue: 'Join Queue',
+    yourQueueToken: 'Your queue token',
+    nowServing: 'Now serving',
+    peopleAhead: 'People ahead',
+    status: 'Status',
+    waiting: 'Waiting',
+    leaveQueue: 'Leave Queue',
+    leaveQueueConfirm: 'Are you sure you want to leave the queue?',
+    queueEmpty: 'Queue information is unavailable for this selection.',
   },
   hi: {
     brand: 'QEase',
@@ -88,6 +104,22 @@ const translations = {
     readyToJoinTitle: 'आगे बढ़ने के लिए तैयार',
     readyToJoinText: 'आपने अपनी यात्रा के लिए निम्नलिखित सेवा चुन ली है।',
     placeholderContinue: 'होम पर वापस जाएँ',
+    joinQueueTitle: 'कतार में शामिल हों',
+    joinQueueSubtitle: 'शामिल होने से पहले वर्तमान कतार की स्थिति देखें।',
+    currentQueue: 'वर्तमान कतार',
+    currentToken: 'वर्तमान टोकन',
+    peopleWaiting: 'प्रतीक्षा कर रहे लोग',
+    estimatedWait: 'अनुमानित प्रतीक्षा समय',
+    averageServiceTime: 'औसत सेवा समय',
+    joinQueue: 'कतार में शामिल हों',
+    yourQueueToken: 'आपका कतार टोकन',
+    nowServing: 'अभी सेवा में',
+    peopleAhead: 'आगे लोग',
+    status: 'स्थिति',
+    waiting: 'प्रतीक्षा में',
+    leaveQueue: 'कतार छोड़ें',
+    leaveQueueConfirm: 'क्या आप वाकई कतार छोड़ना चाहते हैं?',
+    queueEmpty: 'इस चयन के लिए कतार की जानकारी उपलब्ध नहीं है।',
   },
 }
 
@@ -140,6 +172,13 @@ const publicPlaces = [
 ]
 
 const placeIcons = ['🏥', '🏦', '🎓', '🏛️', '🍽️']
+
+const demoQueue = {
+  currentToken: 'A-18',
+  peopleWaiting: 7,
+  estimatedWait: 20,
+  averageServiceTime: 3,
+}
 
 function HeroIllustration() {
   return (
@@ -211,7 +250,7 @@ function App() {
     if (typeof window === 'undefined') return 'landing'
     const params = new URLSearchParams(window.location.search)
     const currentView = params.get('view')
-    return currentView === 'selection' || currentView === 'services' || currentView === 'confirmation' ? currentView : 'landing'
+    return currentView === 'selection' || currentView === 'services' || currentView === 'confirmation' || currentView === 'queue' ? currentView : 'landing'
   })
   const [selectedPlace, setSelectedPlace] = useState(() => {
     if (typeof window === 'undefined') return null
@@ -223,6 +262,10 @@ function App() {
     const params = new URLSearchParams(window.location.search)
     return params.get('service') || null
   })
+  const [queueToken, setQueueToken] = useState(() => {
+    if (typeof window === 'undefined') return null
+    return new URLSearchParams(window.location.search).get('token') || null
+  })
 
   const content = useMemo(() => translations[language], [language])
 
@@ -230,10 +273,11 @@ function App() {
     const handlePopState = () => {
       const params = new URLSearchParams(window.location.search)
       const route = params.get('view')
-      const nextView = route === 'selection' || route === 'services' || route === 'confirmation' ? route : 'landing'
+      const nextView = route === 'selection' || route === 'services' || route === 'confirmation' || route === 'queue' ? route : 'landing'
       setView(nextView)
       setSelectedPlace(params.get('place') || null)
       setSelectedService(params.get('service') || null)
+      setQueueToken(params.get('token') || null)
     }
 
     window.addEventListener('popstate', handlePopState)
@@ -256,13 +300,23 @@ function App() {
       params.set('view', 'services')
       if (nextPlace) params.set('place', nextPlace)
       else params.delete('place')
-      params.delete('service')
+      if (nextService) params.set('service', nextService)
+      else params.delete('service')
     } else if (nextView === 'confirmation') {
       params.set('view', 'confirmation')
       if (nextPlace) params.set('place', nextPlace)
       else params.delete('place')
       if (nextService) params.set('service', nextService)
       else params.delete('service')
+      params.delete('token')
+    } else if (nextView === 'queue') {
+      params.set('view', 'queue')
+      if (nextPlace) params.set('place', nextPlace)
+      else params.delete('place')
+      if (nextService) params.set('service', nextService)
+      else params.delete('service')
+      if (nextService && queueToken) params.set('token', queueToken)
+      else params.delete('token')
     }
 
     const queryString = params.toString()
@@ -272,6 +326,7 @@ function App() {
     setView(nextView)
     setSelectedPlace(nextPlace || null)
     setSelectedService(nextService || null)
+    setQueueToken(nextView === 'queue' ? queueToken : null)
   }
 
   const handleGoToLanding = () => {
@@ -312,7 +367,24 @@ function App() {
 
   const handleServiceContinue = () => {
     if (!selectedPlace || !selectedService) return
-    updateRoute('confirmation', selectedPlace, selectedService)
+    updateRoute('queue', selectedPlace, selectedService)
+  }
+
+  const handleJoinQueue = () => {
+    if (!selectedPlace || !selectedService) return
+    const nextToken = `A-${Number(demoQueue.currentToken.split('-')[1]) + demoQueue.peopleWaiting + 1}`
+    const params = new URLSearchParams(window.location.search)
+    params.set('view', 'queue')
+    params.set('place', selectedPlace)
+    params.set('service', selectedService)
+    params.set('token', nextToken)
+    window.history.pushState({}, '', `${window.location.pathname}?${params.toString()}`)
+    setQueueToken(nextToken)
+  }
+
+  const handleLeaveQueue = () => {
+    if (!window.confirm(content.leaveQueueConfirm)) return
+    updateRoute('services', selectedPlace, selectedService)
   }
 
   const sections = [
@@ -566,26 +638,107 @@ function App() {
         </main>
       )}
 
-      {view === 'confirmation' && selectedPlaceInfo && selectedServiceInfo && (
-        <main className="selection-screen container confirmation-screen">
+      {view === 'queue' && selectedPlaceInfo && selectedServiceInfo && (
+        <main className="selection-screen container queue-screen">
           <div className="screen-header">
             <div>
-              <span className="eyebrow accent">{content.readyToJoinTitle}</span>
-              <h2>{content.readyToJoinTitle}</h2>
+              <span className="eyebrow accent">{content.currentQueue}</span>
+              <h2>{content.joinQueueTitle}</h2>
             </div>
             <button type="button" className="secondary-button" onClick={() => updateRoute('services', selectedPlace, selectedService)}>
               {content.backLabel}
             </button>
           </div>
 
-          <div className="confirmation-panel">
-            <p className="confirmation-intro">{content.readyToJoinText}</p>
-            <div className="confirmation-box">
-              <span>{selectedPlaceInfo.name[language]}</span>
-              <strong>{selectedServiceInfo.name[language]}</strong>
-            </div>
-            <button type="button" className="primary-button" onClick={() => updateRoute('landing', null, null)}>
-              {content.placeholderContinue}
+          <p className="screen-subtitle">{content.joinQueueSubtitle}</p>
+
+          <div className="queue-selection-summary">
+            <span>{selectedPlaceInfo.name[language]}</span>
+            <strong>{selectedServiceInfo.name[language]}</strong>
+          </div>
+
+          {!queueToken ? (
+            <section className="queue-info-panel" aria-labelledby="queue-info-title">
+              <div className="queue-panel-heading">
+                <div>
+                  <span className="eyebrow accent">{content.currentQueue}</span>
+                  <h3 id="queue-info-title">{content.currentQueue}</h3>
+                </div>
+                <span className="queue-live-indicator">● {content.live}</span>
+              </div>
+
+              <div className="queue-stats-grid">
+                <article className="queue-stat-card">
+                  <span className="queue-stat-icon" aria-hidden="true">🎫</span>
+                  <span>{content.currentToken}</span>
+                  <strong>{demoQueue.currentToken}</strong>
+                </article>
+                <article className="queue-stat-card">
+                  <span className="queue-stat-icon" aria-hidden="true">👥</span>
+                  <span>{content.peopleWaiting}</span>
+                  <strong>{demoQueue.peopleWaiting}</strong>
+                </article>
+                <article className="queue-stat-card">
+                  <span className="queue-stat-icon" aria-hidden="true">⏱️</span>
+                  <span>{content.estimatedWait}</span>
+                  <strong>{demoQueue.estimatedWait} {language === 'hi' ? 'मिनट' : 'minutes'}</strong>
+                </article>
+                <article className="queue-stat-card">
+                  <span className="queue-stat-icon" aria-hidden="true">⚡</span>
+                  <span>{content.averageServiceTime}</span>
+                  <strong>{demoQueue.averageServiceTime} {language === 'hi' ? 'मिनट' : 'minutes'}</strong>
+                </article>
+              </div>
+
+              <button type="button" className="primary-button queue-join-button" onClick={handleJoinQueue}>
+                {content.joinQueue}
+              </button>
+            </section>
+          ) : (
+            <section className="joined-queue-panel" aria-labelledby="joined-queue-title">
+              <div className="joined-queue-heading">
+                <span className="eyebrow accent">{content.waiting}</span>
+                <h3 id="joined-queue-title">{content.yourQueueToken}</h3>
+              </div>
+
+              <div className="digital-token-card">
+                <span>{content.yourQueueToken}</span>
+                <strong>{queueToken}</strong>
+                <div className="token-status"><span className="status-dot" aria-hidden="true" />{content.waiting}</div>
+              </div>
+
+              <div className="joined-queue-details">
+                <div><span>{content.nowServing}</span><strong>{demoQueue.currentToken}</strong></div>
+                <div><span>{content.peopleAhead}</span><strong>{demoQueue.peopleWaiting}</strong></div>
+                <div><span>{content.estimatedWait}</span><strong>{demoQueue.estimatedWait} {language === 'hi' ? 'मिनट' : 'minutes'}</strong></div>
+                <div><span>{content.status}</span><strong>{content.waiting}</strong></div>
+              </div>
+
+              <button type="button" className="secondary-button leave-queue-button" onClick={handleLeaveQueue}>
+                {content.leaveQueue}
+              </button>
+            </section>
+          )}
+        </main>
+      )}
+
+      {view === 'queue' && (!selectedPlaceInfo || !selectedServiceInfo) && (
+        <main className="selection-screen container queue-screen">
+          <div className="service-placeholder">
+            <p>{content.queueEmpty}</p>
+            <button type="button" className="primary-button" onClick={handleGoToSelection}>
+              {content.getStarted}
+            </button>
+          </div>
+        </main>
+      )}
+
+      {view === 'confirmation' && (
+        <main className="selection-screen container queue-screen">
+          <div className="service-placeholder">
+            <p>{content.queueEmpty}</p>
+            <button type="button" className="primary-button" onClick={handleGoToSelection}>
+              {content.getStarted}
             </button>
           </div>
         </main>
