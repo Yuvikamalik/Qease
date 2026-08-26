@@ -6,6 +6,7 @@ import queueRoutes from './routes/queueRoutes.js'
 import tokenRoutes from './routes/tokenRoutes.js'
 import adminQueueRoutes from './routes/adminQueueRoutes.js'
 import authRoutes from './routes/authRoutes.js'
+import notificationRoutes from './routes/notificationRoutes.js'
 
 const app = express()
 
@@ -13,6 +14,7 @@ app.use(cors())
 app.use(express.json())
 app.use('/api', catalogRoutes)
 app.use('/api', authRoutes)
+app.use('/api', notificationRoutes)
 app.use('/api', queueRoutes)
 app.use('/api', tokenRoutes)
 app.use('/api', adminQueueRoutes)

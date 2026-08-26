@@ -3,6 +3,7 @@ import './App.css'
 import { getPlaceServices, getPlaces, getServiceStaff } from './api/places.js'
 import { getQueueStatus, initializeQueue } from './api/queues.js'
 import { createToken, getToken, leaveToken } from './api/tokens.js'
+import { getNotifications, markAllNotificationsRead as markAllNotificationsReadApi, markNotificationRead as markNotificationReadApi } from './api/notifications.js'
 
 const translations = {
   en: {
@@ -95,6 +96,8 @@ const translations = {
     notifications: 'Notifications',
     markAllRead: 'Mark all as read',
     noNotifications: 'No notifications yet.',
+    loading: 'Loading...',
+    notificationServiceUnavailable: 'Notifications are temporarily unavailable.',
     queueHistory: 'Queue History',
     noQueueHistory: 'No Queue History',
     noQueueHistoryText: 'Your previous queues will appear here.',
@@ -231,6 +234,8 @@ const translations = {
     notifications: 'सूचनाएँ',
     markAllRead: 'सभी को पढ़ा हुआ चिह्नित करें',
     noNotifications: 'अभी कोई सूचना नहीं है।',
+    loading: 'लोड हो रहा है...',
+    notificationServiceUnavailable: 'सूचनाएँ अस्थायी रूप से उपलब्ध नहीं हैं।',
     queueHistory: 'कतार इतिहास',
     noQueueHistory: 'कोई कतार इतिहास नहीं',
     noQueueHistoryText: 'आपकी पिछली कतारें यहाँ दिखाई देंगी।',
@@ -485,6 +490,8 @@ function App() {
     const stored = readStorage(storageKeys.notifications, [])
     return Array.isArray(stored) ? stored : []
   })
+  const [notificationsLoading, setNotificationsLoading] = useState(false)
+  const [notificationError, setNotificationError] = useState(null)
   const [adminPlaceId, setAdminPlaceId] = useState('hospital')
   const [adminServiceState, setAdminServiceState] = useState({})
   const [staffOverrides, setStaffOverrides] = useState(() => readStorage(storageKeys.staffOverrides, {}))
@@ -564,19 +571,21 @@ function App() {
   useEffect(() => {
     if ((view !== 'queue' && view !== 'dashboard') || !queueId) return undefined
     let cancelled = false
+    let latestRequest = 0
 
     const refreshQueue = async () => {
+      const requestId = ++latestRequest
       try {
         const status = await getQueueStatus(queueId)
-        if (cancelled) return
+        if (cancelled || requestId !== latestRequest) return
         setServerQueue(status)
         setQueueError(null)
         if (activeQueue?.tokenId) {
           const tokenStatus = await getToken(activeQueue.tokenId)
-          if (!cancelled) setServerToken(tokenStatus)
+          if (!cancelled && requestId === latestRequest) setServerToken(tokenStatus)
         }
       } catch (error) {
-        if (!cancelled) setQueueError(error.message)
+        if (!cancelled && requestId === latestRequest) setQueueError(error.message)
       }
     }
 
@@ -587,6 +596,41 @@ function App() {
       window.clearInterval(timer)
     }
   }, [activeQueue?.tokenId, queueId, view])
+
+  useEffect(() => {
+    if (view !== 'dashboard') return undefined
+    let cancelled = false
+    let latestRequest = 0
+    const refreshNotifications = async () => {
+      const requestId = ++latestRequest
+      setNotificationsLoading(true)
+      try {
+        const result = await getNotifications()
+        if (!cancelled && requestId === latestRequest && Array.isArray(result)) {
+          setNotifications(result.map((notification) => ({
+            id: notification._id,
+            type: notification.type,
+            message: notification.message,
+            title: notification.title,
+            time: notification.createdAt,
+            read: notification.read,
+          })))
+          setNotificationError(null)
+        }
+      } catch {
+        if (!cancelled && requestId === latestRequest) setNotificationError(content.notificationServiceUnavailable)
+      } finally {
+        if (!cancelled) setNotificationsLoading(false)
+      }
+    }
+
+    refreshNotifications()
+    const timer = window.setInterval(refreshNotifications, 20000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [content.notificationServiceUnavailable, view])
 
   useEffect(() => {
     const handlePopState = () => {
@@ -808,7 +852,6 @@ function App() {
       window.history.pushState({}, '', `${window.location.pathname}?${params.toString()}`)
       setQueuePaused(false)
       setQueueAlert(null)
-      setNotifications((current) => [{ id: `${Date.now()}-joined`, type: 'joined', message: 'queueJoined', time: new Date().toISOString(), read: false }, ...current])
     } catch (error) {
       setQueueError(error.message)
     } finally {
@@ -900,13 +943,30 @@ function App() {
   const filteredHistory = queueHistory.filter((item) => historyFilter === 'all' || item.status === historyFilter)
   const unreadCount = notifications.filter((notification) => !notification.read).length
 
-  const markAllNotificationsRead = () => setNotifications((current) => current.map((notification) => ({ ...notification, read: true })))
-  const markNotificationRead = (notificationId) => setNotifications((current) => current.map((notification) => notification.id === notificationId ? { ...notification, read: true } : notification))
+  const markAllNotificationsRead = async () => {
+    try {
+      await markAllNotificationsReadApi()
+      setNotifications((current) => current.map((notification) => ({ ...notification, read: true })))
+    } catch {
+      setNotificationError(content.notificationServiceUnavailable)
+    }
+  }
+  const markNotificationRead = async (notificationId) => {
+    try {
+      await markNotificationReadApi(notificationId)
+      setNotifications((current) => current.map((notification) => notification.id === notificationId ? { ...notification, read: true } : notification))
+    } catch {
+      setNotificationError(content.notificationServiceUnavailable)
+    }
+  }
   const getStaffStatus = (person) => staffOverrides[person.id] || person.status
   const notificationLabel = (notification) => {
     if (notification.message === 'queueJoined') return content.queueJoined
     if (notification.message === 'itsYourTurn') return content.itsYourTurn
     if (notification.message === 'yourTurnApproaching') return content.yourTurnApproaching
+    if (notification.message === 'completed') return content.completed
+    if (notification.message === 'queuePaused') return content.queuePaused
+    if (notification.message === 'resumeSimulation') return content.resumeSimulation
     return `${notification.peopleAhead} ${content.peopleAheadNotice}`
   }
   const adminPlaceInfo = publicPlaces.find((place) => place.id === adminPlaceId) || publicPlaces[0]
@@ -1123,8 +1183,9 @@ function App() {
                 <h3>{content.notifications}{unreadCount > 0 ? ` (${unreadCount})` : ''}</h3>
                 {unreadCount > 0 && <button type="button" className="text-button" onClick={markAllNotificationsRead}>{content.markAllRead}</button>}
               </div>
+              {notificationError && <p className="dashboard-muted" role="status">{notificationError}</p>}
               <div className="notification-list">
-                {notifications.length > 0 ? notifications.map((notification) => (
+                {notificationsLoading && notifications.length === 0 ? <p className="dashboard-muted">{content.loading}</p> : notifications.length > 0 ? notifications.map((notification) => (
                   <button type="button" key={notification.id} className={`notification-item ${notification.read ? '' : 'unread'}`} onClick={() => markNotificationRead(notification.id)}>
                     <span className="notification-icon" aria-hidden="true">{notification.type === 'your-turn' ? '🎉' : notification.type === 'approaching' ? '🔔' : '✓'}</span>
                     <span className="notification-copy"><strong>{notificationLabel(notification)}</strong><small>{new Date(notification.time).toLocaleTimeString(language === 'hi' ? 'hi-IN' : 'en-US', { hour: 'numeric', minute: '2-digit' })}</small></span>

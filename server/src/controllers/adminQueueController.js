@@ -3,6 +3,7 @@ import Queue from '../models/Queue.js'
 import QueueEvent from '../models/QueueEvent.js'
 import Staff from '../models/Staff.js'
 import Token from '../models/Token.js'
+import { createQueueEvent, createTokenNotification, notifyTokenRecipients } from '../services/notificationService.js'
 import { currentServingToken, isValidId } from './queueController.js'
 
 const staffStatuses = new Set(['available', 'busy', 'unavailable'])
@@ -85,7 +86,8 @@ export async function callNextToken(request, response, next) {
 
       queue.currentNumber = nextToken.tokenNumber
       await queue.save({ session })
-      await QueueEvent.create([{ queueId: queue._id, tokenId: nextToken._id, eventType: 'called' }], { session })
+      const event = await createQueueEvent({ queueId: queue._id, tokenId: nextToken._id, eventType: 'called' }, session)
+      await createTokenNotification(nextToken, event, { type: 'token_called', title: 'itsYourTurn', message: 'itsYourTurn' }, session)
 
       return { token: nextToken.toObject(), queue: queue.toObject() }
     })
@@ -112,7 +114,8 @@ export async function completeToken(request, response, next) {
       existingToken.status = 'completed'
       existingToken.completedAt = new Date()
       await existingToken.save({ session })
-      await QueueEvent.create([{ queueId: existingToken.queueId, tokenId: existingToken._id, eventType: 'completed' }], { session })
+      const event = await createQueueEvent({ queueId: existingToken.queueId, tokenId: existingToken._id, eventType: 'completed' }, session)
+      await createTokenNotification(existingToken, event, { type: 'token_completed', title: 'completed', message: 'completed' }, session)
       return existingToken.toObject()
     })
 
@@ -139,7 +142,8 @@ export async function skipToken(request, response, next) {
       existingToken.status = 'skipped'
       existingToken.skippedAt = new Date()
       await existingToken.save({ session })
-      await QueueEvent.create([{ queueId: existingToken.queueId, tokenId: existingToken._id, eventType: 'skipped' }], { session })
+      const event = await createQueueEvent({ queueId: existingToken.queueId, tokenId: existingToken._id, eventType: 'skipped' }, session)
+      await createTokenNotification(existingToken, event, { type: 'token_skipped', title: 'queueLeft', message: 'queueLeft' }, session)
       return existingToken.toObject()
     })
 
@@ -163,7 +167,8 @@ export async function pauseQueue(request, response, next) {
       existingQueue.paused = true
       existingQueue.pausedAt = new Date()
       await existingQueue.save({ session })
-      await QueueEvent.create([{ queueId: existingQueue._id, eventType: 'paused' }], { session })
+      const event = await createQueueEvent({ queueId: existingQueue._id, eventType: 'paused' }, session)
+      await notifyTokenRecipients(existingQueue._id, event, { type: 'queue_paused', title: 'queuePaused', message: 'queuePaused' }, session)
       return existingQueue.toObject()
     })
 
@@ -187,7 +192,8 @@ export async function resumeQueue(request, response, next) {
       existingQueue.paused = false
       existingQueue.resumedAt = new Date()
       await existingQueue.save({ session })
-      await QueueEvent.create([{ queueId: existingQueue._id, eventType: 'resumed' }], { session })
+      const event = await createQueueEvent({ queueId: existingQueue._id, eventType: 'resumed' }, session)
+      await notifyTokenRecipients(existingQueue._id, event, { type: 'queue_resumed', title: 'resumeSimulation', message: 'resumeSimulation' }, session)
       return existingQueue.toObject()
     })
 

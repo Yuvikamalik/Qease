@@ -7,7 +7,7 @@ const queueEventSchema = new mongoose.Schema(
     staffId: { type: mongoose.Schema.Types.ObjectId, ref: 'Staff', default: null, index: true },
     eventType: {
       type: String,
-      enum: ['called', 'completed', 'skipped', 'paused', 'resumed', 'staff_status_changed'],
+      enum: ['joined', 'called', 'completed', 'skipped', 'paused', 'resumed', 'staff_status_changed'],
       required: true,
     },
     metadata: { type: mongoose.Schema.Types.Mixed, default: {} },

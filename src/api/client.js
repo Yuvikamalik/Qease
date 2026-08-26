@@ -1,5 +1,16 @@
 const apiBaseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '')
 const authStorageKey = 'qease-auth-token'
+const sessionStorageKey = 'qease-user-session-id'
+
+function getStoredSessionId() {
+  const value = window.localStorage.getItem(sessionStorageKey)
+  if (!value) return null
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}
 
 export async function apiRequest(path, options = {}) {
   const controller = new AbortController()
@@ -11,6 +22,7 @@ export async function apiRequest(path, options = {}) {
       headers: {
         ...(options.body ? { 'Content-Type': 'application/json' } : {}),
         ...(window.localStorage.getItem(authStorageKey) ? { Authorization: `Bearer ${window.localStorage.getItem(authStorageKey)}` } : {}),
+        ...(getStoredSessionId() ? { 'X-Queue-Session-Id': getStoredSessionId() } : {}),
         ...options.headers,
       },
       signal: controller.signal,

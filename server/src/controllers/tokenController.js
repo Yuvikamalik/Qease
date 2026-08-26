@@ -1,5 +1,7 @@
 import Queue from '../models/Queue.js'
+import QueueEvent from '../models/QueueEvent.js'
 import Token from '../models/Token.js'
+import { createTokenNotification, ensureApproachingNotification } from '../services/notificationService.js'
 import { currentServingToken, isValidId } from './queueController.js'
 
 function invalidTokenId(request, response) {
@@ -51,6 +53,8 @@ export async function createToken(request, response, next) {
           status: 'waiting',
           estimatedWaitMinutes: peopleAhead * queue.averageServiceTimeMinutes,
         })
+        const [event] = await QueueEvent.create([{ queueId: queue._id, tokenId: token._id, eventType: 'joined' }])
+        await createTokenNotification(token, event, { type: 'token_joined', title: 'queueJoined', message: 'queueJoined' })
         return response.status(201).json(token)
       } catch (error) {
         if (error.code !== 11000 || attempt === 2) throw error
@@ -82,6 +86,7 @@ export async function getToken(request, response, next) {
         tokenNumber: { $gt: queue.currentNumber, $lt: token.tokenNumber },
       })
       : 0
+    await ensureApproachingNotification(token, peopleAhead)
 
     response.json({
       token,
