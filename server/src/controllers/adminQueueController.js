@@ -26,6 +26,18 @@ async function withTransaction(work) {
   }
 }
 
+async function assertQueueAccess(queue, user, session) {
+  if (user.role === 'admin') return
+  if (user.role !== 'staff' || !user.staffId) throw apiError(403, 'Insufficient permissions')
+  const assignedStaff = await Staff.findOne({
+    _id: user.staffId,
+    active: true,
+    placeId: queue.placeId,
+    serviceIds: queue.serviceId,
+  }).session(session).lean()
+  if (!assignedStaff) throw apiError(403, 'Staff member is not assigned to this queue')
+}
+
 function invalidQueueId(request, response) {
   if (!isValidId(request.params.queueId)) {
     response.status(400).json({ status: 'error', message: 'Invalid queue ID' })
@@ -57,6 +69,7 @@ export async function callNextToken(request, response, next) {
     const result = await withTransaction(async (session) => {
       const queue = await Queue.findById(request.params.queueId).session(session)
       if (!queue) throw apiError(404, 'Queue not found')
+      await assertQueueAccess(queue, request.user, session)
       if (queue.status !== 'active') throw apiError(409, 'Queue is not active')
       if (queue.paused) throw apiError(409, 'Queue is paused')
 
@@ -91,6 +104,9 @@ export async function completeToken(request, response, next) {
     const token = await withTransaction(async (session) => {
       const existingToken = await Token.findById(request.params.tokenId).session(session)
       if (!existingToken) throw apiError(404, 'Token not found')
+      const queue = await Queue.findById(existingToken.queueId).session(session)
+      if (!queue) throw apiError(404, 'Queue not found')
+      await assertQueueAccess(queue, request.user, session)
       if (existingToken.status !== 'serving') throw apiError(409, `Token cannot be completed from ${existingToken.status} state`)
 
       existingToken.status = 'completed'
@@ -113,6 +129,9 @@ export async function skipToken(request, response, next) {
     const token = await withTransaction(async (session) => {
       const existingToken = await Token.findById(request.params.tokenId).session(session)
       if (!existingToken) throw apiError(404, 'Token not found')
+      const queue = await Queue.findById(existingToken.queueId).session(session)
+      if (!queue) throw apiError(404, 'Queue not found')
+      await assertQueueAccess(queue, request.user, session)
       if (!['waiting', 'serving'].includes(existingToken.status)) {
         throw apiError(409, `Token cannot be skipped from ${existingToken.status} state`)
       }
@@ -137,6 +156,7 @@ export async function pauseQueue(request, response, next) {
     const queue = await withTransaction(async (session) => {
       const existingQueue = await Queue.findById(request.params.queueId).session(session)
       if (!existingQueue) throw apiError(404, 'Queue not found')
+      await assertQueueAccess(existingQueue, request.user, session)
       if (existingQueue.status !== 'active') throw apiError(409, 'Queue is not active')
       if (existingQueue.paused) throw apiError(409, 'Queue is already paused')
 
@@ -160,6 +180,7 @@ export async function resumeQueue(request, response, next) {
     const queue = await withTransaction(async (session) => {
       const existingQueue = await Queue.findById(request.params.queueId).session(session)
       if (!existingQueue) throw apiError(404, 'Queue not found')
+      await assertQueueAccess(existingQueue, request.user, session)
       if (existingQueue.status !== 'active') throw apiError(409, 'Queue is not active')
       if (!existingQueue.paused) throw apiError(409, 'Queue is not paused')
 
@@ -191,6 +212,9 @@ export async function updateStaffStatus(request, response, next) {
     const staff = await withTransaction(async (session) => {
       const existingStaff = await Staff.findById(request.params.staffId).session(session)
       if (!existingStaff) throw apiError(404, 'Staff member not found')
+      if (request.user.role !== 'admin' && request.user.staffId?.toString() !== existingStaff._id.toString()) {
+        throw apiError(403, 'Staff member can only update their own status')
+      }
 
       existingStaff.status = status
       existingStaff.expectedAvailableAt = expectedAvailableAt

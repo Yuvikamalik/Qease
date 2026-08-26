@@ -11,6 +11,7 @@ const localizedTextSchema = new mongoose.Schema(
 const staffSchema = new mongoose.Schema(
   {
     slug: { type: String, required: true, unique: true, index: true, trim: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
     placeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Place', required: true, index: true },
     serviceIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Service' }],
     icon: { type: String, required: true, trim: true },

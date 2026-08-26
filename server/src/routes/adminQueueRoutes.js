@@ -7,10 +7,11 @@ import {
   skipToken,
   updateStaffStatus,
 } from '../controllers/adminQueueController.js'
+import { requireAuth, requireRole } from '../middleware/auth.js'
 
 const router = Router()
 
-// Authentication and authorization must protect these staff/admin routes before production use.
+router.use(requireAuth, requireRole('staff', 'admin'))
 router.post('/queues/:queueId/next', callNextToken)
 router.post('/tokens/:tokenId/complete', completeToken)
 router.post('/tokens/:tokenId/skip', skipToken)

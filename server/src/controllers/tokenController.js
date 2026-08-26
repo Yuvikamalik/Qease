@@ -44,6 +44,7 @@ export async function createToken(request, response, next) {
       try {
         const token = await Token.create({
           queueId: queue._id,
+          userId: request.user?._id || null,
           userSessionId: typeof request.body?.userSessionId === 'string' ? request.body.userSessionId : null,
           tokenNumber,
           displayToken: `${queue.prefix}-${tokenNumber}`,

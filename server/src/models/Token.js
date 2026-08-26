@@ -3,6 +3,7 @@ import mongoose from 'mongoose'
 const tokenSchema = new mongoose.Schema(
   {
     queueId: { type: mongoose.Schema.Types.ObjectId, ref: 'Queue', required: true, index: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
     userSessionId: { type: String, trim: true, index: true, default: null },
     tokenNumber: { type: Number, required: true, min: 1 },
     displayToken: { type: String, required: true, trim: true },

@@ -1,10 +1,12 @@
 import 'dotenv/config'
 import app from './app.js'
 import { connectToDatabase } from './config/database.js'
+import { getJwtSecret } from './middleware/auth.js'
 
 const port = Number(process.env.PORT) || 5000
 
 async function startServer() {
+  getJwtSecret()
   await connectToDatabase()
   console.log('QEase backend connected to MongoDB')
 
