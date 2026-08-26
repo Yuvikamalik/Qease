@@ -1,5 +1,6 @@
 import express from 'express'
 import cors from 'cors'
+import { getDatabaseStatus } from './config/database.js'
 
 const app = express()
 
@@ -10,6 +11,7 @@ app.get('/api/health', (_request, response) => {
   response.json({
     status: 'ok',
     message: 'QEase backend is running',
+    database: getDatabaseStatus(),
   })
 })
 
