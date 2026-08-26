@@ -1,11 +1,13 @@
 import express from 'express'
 import cors from 'cors'
 import { getDatabaseStatus } from './config/database.js'
+import catalogRoutes from './routes/catalogRoutes.js'
 
 const app = express()
 
 app.use(cors())
 app.use(express.json())
+app.use('/api', catalogRoutes)
 
 app.get('/api/health', (_request, response) => {
   response.json({
