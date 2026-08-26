@@ -4,6 +4,8 @@ import { getPlaceServices, getPlaces, getServiceStaff } from './api/places.js'
 import { getQueueStatus, initializeQueue } from './api/queues.js'
 import { createToken, getToken, leaveToken } from './api/tokens.js'
 import { getNotifications, markAllNotificationsRead as markAllNotificationsReadApi, markNotificationRead as markNotificationReadApi } from './api/notifications.js'
+import { getAdminAnalytics, getAdminOverview, getMyTokenHistory } from './api/analytics.js'
+import { getAuthToken } from './api/auth.js'
 
 const translations = {
   en: {
@@ -492,6 +494,9 @@ function App() {
   })
   const [notificationsLoading, setNotificationsLoading] = useState(false)
   const [notificationError, setNotificationError] = useState(null)
+  const [adminOverview, setAdminOverview] = useState(null)
+  const [adminAnalytics, setAdminAnalytics] = useState(null)
+  const [adminDataError, setAdminDataError] = useState(null)
   const [adminPlaceId, setAdminPlaceId] = useState('hospital')
   const [adminServiceState, setAdminServiceState] = useState({})
   const [staffOverrides, setStaffOverrides] = useState(() => readStorage(storageKeys.staffOverrides, {}))
@@ -631,6 +636,33 @@ function App() {
       window.clearInterval(timer)
     }
   }, [content.notificationServiceUnavailable, view])
+
+  useEffect(() => {
+    if (view !== 'admin') return undefined
+    let cancelled = false
+    Promise.all([getAdminOverview(), getAdminAnalytics()])
+      .then(([overview, analytics]) => {
+        if (cancelled) return
+        setAdminOverview(overview)
+        setAdminAnalytics(analytics)
+        setAdminDataError(null)
+      })
+      .catch((error) => {
+        if (!cancelled) setAdminDataError(error.message)
+      })
+    return () => { cancelled = true }
+  }, [view])
+
+  useEffect(() => {
+    if (view !== 'dashboard' || !getAuthToken()) return undefined
+    let cancelled = false
+    getMyTokenHistory()
+      .then((result) => {
+        if (!cancelled && Array.isArray(result.items)) setQueueHistory(result.items.map((item) => ({ ...item, id: item._id, timestamp: item.joinedAt, token: item.token })))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [view])
 
   useEffect(() => {
     const handlePopState = () => {
@@ -973,8 +1005,12 @@ function App() {
   const adminServices = serviceCatalog[adminPlaceInfo.id] || []
   const getAdminQueue = (service, index) => adminQueueState[service.id] || { waiting: (index + 2) * 2, serving: index + 8 }
   const adminStaff = adminServices.flatMap((service) => (personCatalog[service.id] || []).map((person) => ({ ...person, service })))
-  const adminWaiting = adminServices.reduce((total, service, index) => total + getAdminQueue(service, index).waiting, 0)
-  const adminAvailableStaff = adminStaff.filter((person) => getStaffStatus(person) === 'available').length
+  const adminWaiting = adminOverview?.peopleWaiting ?? 0
+  const adminAvailableStaff = adminOverview?.activeStaff ?? 0
+  const analyticsAverageWaiting = adminOverview?.averageWaitingMinutes
+  const analyticsAverageService = adminOverview?.averageServiceMinutes
+  const analyticsPeakHour = adminAnalytics?.busiestHours?.[0]?._id
+  const analyticsPeakLabel = analyticsPeakHour === undefined ? '-' : `${analyticsPeakHour}:00 UTC`
   const adminNextToken = (service) => {
     const current = adminQueueState[service.id] || { waiting: 2, serving: 8 }
     setAdminQueueState((queues) => ({ ...queues, [service.id]: { ...current, waiting: Math.max(0, current.waiting - 1), serving: current.serving + 1 } }))
@@ -1225,14 +1261,15 @@ function App() {
 
           <section className="admin-summary-grid">
             {[
-              [content.totalActiveQueues, adminServices.filter((service) => !adminServiceState[service.id]).length, '▦'],
-              [content.peopleWaitingAdmin, adminWaiting, '♙'],
-              [content.currentlyServing, adminServices.length, '▶'],
+              [content.totalActiveQueues, adminOverview?.activeQueues ?? 0, '▦'],
+              [content.peopleWaitingAdmin, adminOverview?.peopleWaiting ?? 0, '♙'],
+              [content.currentlyServing, adminOverview?.currentlyServing ?? 0, '▶'],
               [content.availableStaff, adminAvailableStaff, '●'],
-              [content.completedToday, 76, '✓'],
+              [content.completedToday, adminOverview?.completedToday ?? 0, '✓'],
             ].map(([label, value, icon]) => <article className="admin-stat-card" key={label}><span>{icon}</span><small>{label}</small><strong>{value}</strong></article>)}
           </section>
 
+          {adminDataError && <p className="dashboard-muted" role="status">{adminDataError}</p>}
           <section className="admin-section place-manager">
             <div className="admin-section-heading"><h3>{content.managePlace}</h3><select value={adminPlaceId} onChange={(event) => setAdminPlaceId(event.target.value)} aria-label={content.managePlace}>{publicPlaces.map((place) => <option value={place.id} key={place.id}>{place.name[language]}</option>)}</select></div>
             <div className="place-manager-summary"><strong>{adminPlaceInfo.name[language]}</strong><span>{adminServices.length} {content.servicesLabel}</span><span>{adminWaiting} {content.peopleWaitingShort}</span><b>● {content.active}</b></div>
@@ -1246,7 +1283,7 @@ function App() {
 
           <section className="admin-section"><div className="admin-section-heading"><h3>{content.staffManagement}</h3></div><div className="staff-admin-grid">{adminStaff.length ? adminStaff.map((person) => { const status = getStaffStatus(person); return <article className="staff-admin-card" key={person.id}><span className="person-avatar" aria-hidden="true">{person.icon}</span><div><strong>{person.name[language]}</strong><span>{person.role[language]}</span><small>{person.service.name[language]}</small></div><span className={`admin-status status-${status}`}>● {status === 'available' ? content.available : status === 'busy' ? content.currentlyBusy : content.notAvailable}</span><div className="status-controls">{['available', 'busy', 'unavailable'].map((option) => <button type="button" key={option} className={status === option ? 'active' : ''} onClick={() => setAdminStaffStatus(person.id, option)}>{option === 'available' ? content.available : option === 'busy' ? content.busy : content.unavailable}</button>)}</div></article> }) : <p className="dashboard-muted">{content.noStaff}</p>}</div></section>
 
-          <div className="admin-columns"><section className="admin-section admin-panel"><div className="admin-section-heading"><h3>{content.analytics}</h3></div><div className="analytics-grid"><div><span>{content.peopleServed}</span><strong>76</strong></div><div><span>{content.averageWaiting}</span><strong>18 min</strong></div><div><span>{content.averageServiceTime}</span><strong>4 min</strong></div><div><span>{content.peakPeriod}</span><strong>11 AM - 1 PM</strong></div></div></section><section className="admin-section admin-panel"><div className="admin-section-heading"><h3>{content.adminNotifications}</h3></div><div className="admin-alert-list"><p>⚠ {content.adminBusyAlert}</p><p>● {content.adminUnavailableAlert}</p><p>Ⅱ {content.adminPausedAlert}</p></div></section></div>
+          <div className="admin-columns"><section className="admin-section admin-panel"><div className="admin-section-heading"><h3>{content.analytics}</h3></div><div className="analytics-grid"><div><span>{content.peopleServed}</span><strong>{adminOverview?.completedToday ?? 0}</strong></div><div><span>{content.averageWaiting}</span><strong>{analyticsAverageWaiting === null || analyticsAverageWaiting === undefined ? '-' : `${Math.round(analyticsAverageWaiting)} min`}</strong></div><div><span>{content.averageServiceTime}</span><strong>{analyticsAverageService === null || analyticsAverageService === undefined ? '-' : `${Math.round(analyticsAverageService)} min`}</strong></div><div><span>{content.peakPeriod}</span><strong>{analyticsPeakLabel}</strong></div></div></section><section className="admin-section admin-panel"><div className="admin-section-heading"><h3>{content.adminNotifications}</h3></div><div className="admin-alert-list"><p>{adminOverview?.pausedQueues ?? 0} {content.queuePaused}</p><p>{adminOverview?.skippedToday ?? 0} {content.queueLeft}</p></div></section></div>
         </main>
       )}
 
