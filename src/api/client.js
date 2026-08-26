@@ -1,6 +1,12 @@
-const apiBaseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '')
 const authStorageKey = 'qease-auth-token'
 const sessionStorageKey = 'qease-user-session-id'
+
+function getApiBaseUrl() {
+  const configuredUrl = import.meta.env.VITE_API_URL
+  if (configuredUrl) return configuredUrl.replace(/\/$/, '')
+  if (import.meta.env.DEV) return 'http://localhost:5000/api'
+  throw new Error('VITE_API_URL is not configured for this deployment.')
+}
 
 function getStoredSessionId() {
   const value = window.localStorage.getItem(sessionStorageKey)
@@ -15,6 +21,7 @@ function getStoredSessionId() {
 export async function apiRequest(path, options = {}) {
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), 10000)
+  const apiBaseUrl = getApiBaseUrl()
 
   try {
     const response = await fetch(`${apiBaseUrl}${path}`, {
