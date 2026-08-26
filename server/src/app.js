@@ -2,12 +2,16 @@ import express from 'express'
 import cors from 'cors'
 import { getDatabaseStatus } from './config/database.js'
 import catalogRoutes from './routes/catalogRoutes.js'
+import queueRoutes from './routes/queueRoutes.js'
+import tokenRoutes from './routes/tokenRoutes.js'
 
 const app = express()
 
 app.use(cors())
 app.use(express.json())
 app.use('/api', catalogRoutes)
+app.use('/api', queueRoutes)
+app.use('/api', tokenRoutes)
 
 app.get('/api/health', (_request, response) => {
   response.json({
