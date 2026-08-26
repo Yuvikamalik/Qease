@@ -19,5 +19,9 @@ const tokenSchema = new mongoose.Schema(
 
 tokenSchema.index({ queueId: 1, tokenNumber: 1 }, { unique: true })
 tokenSchema.index({ queueId: 1, status: 1, tokenNumber: 1 })
+tokenSchema.index(
+  { queueId: 1, status: 1 },
+  { unique: true, partialFilterExpression: { status: 'serving' } },
+)
 
 export default mongoose.model('Token', tokenSchema)

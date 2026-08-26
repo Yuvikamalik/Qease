@@ -4,6 +4,7 @@ import { getDatabaseStatus } from './config/database.js'
 import catalogRoutes from './routes/catalogRoutes.js'
 import queueRoutes from './routes/queueRoutes.js'
 import tokenRoutes from './routes/tokenRoutes.js'
+import adminQueueRoutes from './routes/adminQueueRoutes.js'
 
 const app = express()
 
@@ -12,6 +13,7 @@ app.use(express.json())
 app.use('/api', catalogRoutes)
 app.use('/api', queueRoutes)
 app.use('/api', tokenRoutes)
+app.use('/api', adminQueueRoutes)
 
 app.get('/api/health', (_request, response) => {
   response.json({

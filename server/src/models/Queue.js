@@ -11,6 +11,8 @@ const queueSchema = new mongoose.Schema(
     nextNumber: { type: Number, required: true, min: 1, default: 1 },
     status: { type: String, enum: ['active', 'closed'], required: true, default: 'active' },
     paused: { type: Boolean, default: false },
+    pausedAt: { type: Date, default: null },
+    resumedAt: { type: Date, default: null },
     averageServiceTimeMinutes: { type: Number, required: true, min: 0, default: 3 },
   },
   { timestamps: true },
