@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
+import { getPlaceServices, getPlaces, getServiceStaff } from './api/places.js'
+import { getQueueStatus, initializeQueue } from './api/queues.js'
+import { createToken, getToken, leaveToken } from './api/tokens.js'
 
 const translations = {
   en: {
@@ -337,6 +340,7 @@ const storageKeys = {
   history: 'qease-queue-history',
   notifications: 'qease-notifications',
   staffOverrides: 'qease-staff-overrides',
+  userSessionId: 'qease-user-session-id',
 }
 
 function readStorage(key, fallback) {
@@ -355,6 +359,26 @@ function writeStorage(key, value) {
   } catch {
     // Storage can be unavailable in private browsing or restricted environments.
   }
+}
+
+function getUserSessionId() {
+  const stored = readStorage(storageKeys.userSessionId, null)
+  if (typeof stored === 'string' && stored) return stored
+  const sessionId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`
+  writeStorage(storageKeys.userSessionId, sessionId)
+  return sessionId
+}
+
+function normalizePlace(place) {
+  return { ...place, id: place.slug }
+}
+
+function normalizeService(service) {
+  return { ...service, id: service.slug }
+}
+
+function normalizeStaff(person) {
+  return { ...person, id: person.slug, expectedAt: person.expectedAvailableAt }
 }
 
 function HeroIllustration() {
@@ -447,6 +471,10 @@ function App() {
     if (typeof window === 'undefined') return null
     return new URLSearchParams(window.location.search).get('person') || null
   })
+  const [catalogPlaces, setCatalogPlaces] = useState(publicPlaces)
+  const [catalogServices, setCatalogServices] = useState(serviceCatalog)
+  const [catalogPeople, setCatalogPeople] = useState(personCatalog)
+  const [catalogError, setCatalogError] = useState(null)
   const [activeQueue, setActiveQueue] = useState(() => readStorage(storageKeys.activeQueue, null))
   const [queueHistory, setQueueHistory] = useState(() => {
     const history = readStorage(storageKeys.history, [])
@@ -470,10 +498,95 @@ function App() {
   })
   const [queuePaused, setQueuePaused] = useState(false)
   const [queueAlert, setQueueAlert] = useState(null)
+  const [queueId, setQueueId] = useState(() => readStorage(storageKeys.activeQueue, null)?.queueId || null)
+  const [serverQueue, setServerQueue] = useState(null)
+  const [serverToken, setServerToken] = useState(null)
+  const [queueError, setQueueError] = useState(null)
+  const [joiningQueue, setJoiningQueue] = useState(false)
 
   const content = useMemo(() => translations[language], [language])
   const activeQueueToken = queueToken || activeQueue?.token || null
   const selectedServicePaused = Boolean(selectedService && adminServiceState[selectedService])
+
+  useEffect(() => {
+    let cancelled = false
+    getPlaces()
+      .then((places) => {
+        if (!cancelled && Array.isArray(places) && places.length > 0) setCatalogPlaces(places.map(normalizePlace))
+      })
+      .catch(() => {
+        if (!cancelled) setCatalogError('Catalog service unavailable. Showing demo catalog.')
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    if (!selectedPlace) return undefined
+    let cancelled = false
+    getPlaceServices(selectedPlace)
+      .then((services) => {
+        if (!cancelled && Array.isArray(services) && services.length > 0) {
+          setCatalogServices((current) => ({ ...current, [selectedPlace]: services.map(normalizeService) }))
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCatalogError('Service catalog unavailable. Showing demo services.')
+      })
+    return () => { cancelled = true }
+  }, [selectedPlace])
+
+  useEffect(() => {
+    if (!selectedService) return undefined
+    let cancelled = false
+    getServiceStaff(selectedService)
+      .then((people) => {
+        if (!cancelled && Array.isArray(people)) setCatalogPeople((current) => ({ ...current, [selectedService]: people.map(normalizeStaff) }))
+      })
+      .catch(() => {
+        if (!cancelled) setCatalogError('Staff catalog unavailable. Showing demo staff.')
+      })
+    return () => { cancelled = true }
+  }, [selectedService])
+
+  useEffect(() => {
+    if ((view !== 'queue' && view !== 'dashboard') || !selectedPlace || !selectedService || queueId) return undefined
+    let cancelled = false
+    initializeQueue(selectedPlace, selectedService)
+      .then((queue) => {
+        if (!cancelled) setQueueId(queue._id)
+      })
+      .catch(() => {
+        if (!cancelled) setQueueError('Live queue service unavailable. Showing demo queue data.')
+      })
+    return () => { cancelled = true }
+  }, [queueId, selectedPlace, selectedService, view])
+
+  useEffect(() => {
+    if ((view !== 'queue' && view !== 'dashboard') || !queueId) return undefined
+    let cancelled = false
+
+    const refreshQueue = async () => {
+      try {
+        const status = await getQueueStatus(queueId)
+        if (cancelled) return
+        setServerQueue(status)
+        setQueueError(null)
+        if (activeQueue?.tokenId) {
+          const tokenStatus = await getToken(activeQueue.tokenId)
+          if (!cancelled) setServerToken(tokenStatus)
+        }
+      } catch (error) {
+        if (!cancelled) setQueueError(error.message)
+      }
+    }
+
+    refreshQueue()
+    const timer = window.setInterval(refreshQueue, 15000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [activeQueue?.tokenId, queueId, view])
 
   useEffect(() => {
     const handlePopState = () => {
@@ -502,7 +615,7 @@ function App() {
   }, [activeQueue])
 
   useEffect(() => {
-    if ((view !== 'queue' && view !== 'dashboard') || !activeQueueToken || queuePaused || selectedServicePaused || queueProgress.peopleAhead <= 0) return undefined
+    if (queueId || (view !== 'queue' && view !== 'dashboard') || !activeQueueToken || queuePaused || selectedServicePaused || queueProgress.peopleAhead <= 0) return undefined
 
     let alertTimeout
     const timer = window.setInterval(() => {
@@ -535,7 +648,7 @@ function App() {
       window.clearInterval(timer)
       window.clearTimeout(alertTimeout)
     }
-  }, [activeQueueToken, queuePaused, queueProgress.peopleAhead, selectedServicePaused, view])
+  }, [activeQueueToken, queueId, queuePaused, queueProgress.peopleAhead, selectedServicePaused, view])
 
   const updateRoute = (nextView, nextPlace = selectedPlace, nextService = selectedService, nextToken = queueToken, nextPerson = selectedPerson) => {
     const params = new URLSearchParams(window.location.search)
@@ -669,30 +782,38 @@ function App() {
     updateRoute('queue', selectedPlace, selectedService)
   }
 
-  const handleJoinQueue = () => {
-    if (!selectedPlace || !selectedService) return
-    const nextToken = `A-${Number(demoQueue.currentToken.split('-')[1]) + demoQueue.peopleWaiting + 1}`
-    const params = new URLSearchParams(window.location.search)
-    params.set('view', 'queue')
-    params.set('place', selectedPlace)
-    params.set('service', selectedService)
-    params.set('token', nextToken)
-    window.history.pushState({}, '', `${window.location.pathname}?${params.toString()}`)
-    setQueueProgress({ servingNumber: 18, peopleAhead: demoQueue.peopleWaiting })
-    setQueuePaused(false)
-    setQueueAlert(null)
-    setQueueToken(nextToken)
-    setActiveQueue({
-      place: selectedPlace,
-      service: selectedService,
-      person: selectedPerson,
-      token: nextToken,
-      servingNumber: 18,
-      peopleAhead: demoQueue.peopleWaiting,
-      estimatedWait: demoQueue.peopleWaiting * demoQueue.averageServiceTime,
-      joinedAt: new Date().toISOString(),
-    })
-    setNotifications((current) => [{ id: `${Date.now()}-joined`, type: 'joined', message: 'queueJoined', time: new Date().toISOString(), read: false }, ...current])
+  const handleJoinQueue = async () => {
+    if (!selectedPlace || !selectedService || !queueId || joiningQueue) return
+    setJoiningQueue(true)
+    setQueueError(null)
+    try {
+      const token = await createToken(queueId, getUserSessionId())
+      const nextToken = token.displayToken
+      setServerToken({ token, queueId, currentServingToken: serverQueue?.currentServingToken, peopleAhead: 0, estimatedWaitMinutes: token.estimatedWaitMinutes, queueStatus: serverQueue?.status, paused: serverQueue?.paused })
+      setQueueToken(nextToken)
+      setActiveQueue({
+        queueId,
+        tokenId: token._id,
+        place: selectedPlace,
+        service: selectedService,
+        person: selectedPerson,
+        token: nextToken,
+        joinedAt: token.joinedAt,
+      })
+      const params = new URLSearchParams(window.location.search)
+      params.set('view', 'queue')
+      params.set('place', selectedPlace)
+      params.set('service', selectedService)
+      params.set('token', nextToken)
+      window.history.pushState({}, '', `${window.location.pathname}?${params.toString()}`)
+      setQueuePaused(false)
+      setQueueAlert(null)
+      setNotifications((current) => [{ id: `${Date.now()}-joined`, type: 'joined', message: 'queueJoined', time: new Date().toISOString(), read: false }, ...current])
+    } catch (error) {
+      setQueueError(error.message)
+    } finally {
+      setJoiningQueue(false)
+    }
   }
 
   const handleChoosePerson = () => {
@@ -716,11 +837,19 @@ function App() {
     updateRoute('queue', selectedPlace, selectedService)
   }
 
-  const handleLeaveQueue = () => {
+  const handleLeaveQueue = async () => {
     if (!window.confirm(content.leaveQueueConfirm)) return
     const queuePlace = selectedPlace || activeQueue?.place
     const queueService = selectedService || activeQueue?.service
     const queuePerson = selectedPerson || activeQueue?.person || null
+    if (activeQueue?.tokenId) {
+      try {
+        await leaveToken(activeQueue.tokenId)
+      } catch (error) {
+        setQueueError(error.message)
+        return
+      }
+    }
     if (activeQueue || queueToken) {
       setQueueHistory((current) => [{
         id: `${Date.now()}-left`,
@@ -729,12 +858,15 @@ function App() {
         person: queuePerson,
         token: queueToken || activeQueue?.token,
         status: 'left',
-        estimatedWait: queueProgress.peopleAhead * demoQueue.averageServiceTime,
+        estimatedWait: serverToken?.estimatedWaitMinutes ?? queueProgress.peopleAhead * demoQueue.averageServiceTime,
         timestamp: new Date().toISOString(),
       }, ...current])
     }
     updateRoute('services', queuePlace, queueService)
     setActiveQueue(null)
+    setServerToken(null)
+    setServerQueue(null)
+    setQueueId(null)
     setQueuePaused(true)
     setQueueAlert(null)
     setQueueProgress({ servingNumber: 18, peopleAhead: demoQueue.peopleWaiting })
@@ -746,22 +878,24 @@ function App() {
     { step: '03', title: content.step3, text: content.step3Text },
   ]
 
-  const selectedPlaceInfo = publicPlaces.find((place) => place.id === selectedPlace) || null
+  const selectedPlaceInfo = catalogPlaces.find((place) => place.id === selectedPlace) || null
   const selectedServiceInfo =
     selectedPlaceInfo && selectedService
-      ? serviceCatalog[selectedPlaceInfo.id]?.find((service) => service.id === selectedService) || null
+      ? catalogServices[selectedPlaceInfo.id]?.find((service) => service.id === selectedService) || null
       : null
-  const peopleForService = selectedServiceInfo ? personCatalog[selectedServiceInfo.id] || [] : []
+  const peopleForService = selectedServiceInfo ? catalogPeople[selectedServiceInfo.id] || [] : []
   const selectedPersonInfo = peopleForService.find((person) => person.id === selectedPerson) || null
-  const currentQueueToken = `A-${queueProgress.servingNumber}`
-  const estimatedQueueWait = queueProgress.peopleAhead * demoQueue.averageServiceTime
-  const queueStatus = selectedServicePaused ? 'paused' : queueProgress.peopleAhead === 0 ? 'your-turn' : queueProgress.peopleAhead <= 2 ? 'approaching' : 'waiting'
+  const serverPeopleAhead = serverToken?.peopleAhead ?? serverQueue?.peopleWaiting ?? queueProgress.peopleAhead
+  const serverEstimatedQueueWait = serverToken?.estimatedWaitMinutes ?? serverQueue?.estimatedWaitMinutes ?? serverPeopleAhead * demoQueue.averageServiceTime
+  const currentQueueToken = serverToken?.currentServingToken || serverQueue?.currentServingToken || `A-${queueProgress.servingNumber}`
+  const estimatedQueueWait = serverEstimatedQueueWait
+  const queueStatus = serverQueue?.paused || serverToken?.paused ? 'paused' : serverToken?.token?.status === 'serving' ? 'your-turn' : serverToken?.token?.status === 'completed' ? 'completed' : serverPeopleAhead === 0 ? 'your-turn' : serverPeopleAhead <= 2 ? 'approaching' : 'waiting'
   const dashboardQueueStatus = activeQueue?.service && adminServiceState[activeQueue.service] ? 'paused' : queueStatus
   const queueStatusLabel = (status) => status === 'paused' ? content.queuePaused : status === 'your-turn' ? content.itsYourTurn : status === 'approaching' ? content.yourTurnApproaching : content.waiting
-  const queueProgressPercent = Math.round(((demoQueue.peopleWaiting - queueProgress.peopleAhead) / demoQueue.peopleWaiting) * 100)
-  const dashboardPlaceInfo = publicPlaces.find((place) => place.id === activeQueue?.place) || null
-  const dashboardServiceInfo = dashboardPlaceInfo ? serviceCatalog[dashboardPlaceInfo.id]?.find((service) => service.id === activeQueue?.service) || null : null
-  const dashboardPeople = dashboardServiceInfo ? personCatalog[dashboardServiceInfo.id] || [] : []
+  const queueProgressPercent = serverQueue ? Math.max(0, Math.min(100, Math.round(((serverQueue.peopleWaiting + serverPeopleAhead === 0 ? 0 : serverQueue.peopleWaiting) - serverPeopleAhead) / Math.max(1, serverQueue.peopleWaiting) * 100))) : Math.round(((demoQueue.peopleWaiting - queueProgress.peopleAhead) / demoQueue.peopleWaiting) * 100)
+  const dashboardPlaceInfo = catalogPlaces.find((place) => place.id === activeQueue?.place) || null
+  const dashboardServiceInfo = dashboardPlaceInfo ? catalogServices[dashboardPlaceInfo.id]?.find((service) => service.id === activeQueue?.service) || null : null
+  const dashboardPeople = dashboardServiceInfo ? catalogPeople[dashboardServiceInfo.id] || [] : []
   const dashboardPersonInfo = dashboardPeople.find((person) => person.id === activeQueue?.person) || null
   const filteredHistory = queueHistory.filter((item) => historyFilter === 'all' || item.status === historyFilter)
   const unreadCount = notifications.filter((notification) => !notification.read).length
@@ -964,7 +1098,7 @@ function App() {
                 <div className="dashboard-summary-grid">
                   <div><span>{content.yourQueueToken}</span><strong>{activeQueue.token}</strong></div>
                   <div><span>{content.nowServing}</span><strong>{currentQueueToken}</strong></div>
-                  <div><span>{content.peopleAhead}</span><strong>{queueProgress.peopleAhead}</strong></div>
+                  <div><span>{content.peopleAhead}</span><strong>{serverPeopleAhead}</strong></div>
                   <div><span>{content.estimatedWait}</span><strong>{estimatedQueueWait} {language === 'hi' ? 'मिनट' : 'minutes'}</strong></div>
                 </div>
                 <div className="queue-progress-track" role="progressbar" aria-valuenow={queueProgressPercent} aria-valuemin="0" aria-valuemax="100" aria-label={content.queueProgress}><span style={{ width: `${queueProgressPercent}%` }} /></div>
@@ -1009,9 +1143,9 @@ function App() {
               </div>
               <div className="history-list">
                 {filteredHistory.length > 0 ? filteredHistory.map((item) => {
-                  const historyPlace = publicPlaces.find((place) => place.id === item.place)
-                  const historyService = historyPlace ? serviceCatalog[historyPlace.id]?.find((service) => service.id === item.service) : null
-                  const historyPeople = historyService ? personCatalog[historyService.id] || [] : []
+                  const historyPlace = catalogPlaces.find((place) => place.id === item.place)
+                  const historyService = historyPlace ? catalogServices[historyPlace.id]?.find((service) => service.id === item.service) : null
+                  const historyPeople = historyService ? catalogPeople[historyService.id] || [] : []
                   const historyPerson = historyPeople.find((person) => person.id === item.person)
                   return <article className="history-item" key={item.id}><div><strong>{historyPlace?.name[language] || item.place}</strong><span>{historyService?.name[language] || item.service}</span>{historyPerson && <span>{historyPerson.name[language]}</span>}</div><div><strong>{item.token}</strong><span>{item.status === 'left' ? content.historyLeft : content.completed}</span><small>{new Date(item.timestamp).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US')}</small></div></article>
                 }) : <div className="dashboard-muted"><strong>{content.noQueueHistory}</strong><p>{content.noQueueHistoryText}</p></div>}
@@ -1068,9 +1202,10 @@ function App() {
           </div>
 
           <p className="screen-subtitle">{content.choosePlaceSubtitle}</p>
+          {catalogError && <div className="queue-alert" role="status">{catalogError}</div>}
 
           <div className="selection-grid">
-            {publicPlaces.map((place) => {
+            {catalogPlaces.map((place) => {
               const isSelected = selectedPlace === place.id
 
               return (
@@ -1124,7 +1259,7 @@ function App() {
           </div>
 
           <div className="selection-grid service-grid">
-            {serviceCatalog[selectedPlaceInfo.id].map((service) => {
+            {(catalogServices[selectedPlaceInfo.id] || []).map((service) => {
               const isSelected = selectedService === service.id
 
               return (
@@ -1203,17 +1338,17 @@ function App() {
                 <article className="queue-stat-card">
                   <span className="queue-stat-icon" aria-hidden="true">🎫</span>
                   <span>{content.currentToken}</span>
-                  <strong>{demoQueue.currentToken}</strong>
+                  <strong>{serverQueue?.currentServingToken || demoQueue.currentToken}</strong>
                 </article>
                 <article className="queue-stat-card">
                   <span className="queue-stat-icon" aria-hidden="true">👥</span>
                   <span>{content.peopleWaiting}</span>
-                  <strong>{demoQueue.peopleWaiting}</strong>
+                  <strong>{serverQueue?.peopleWaiting ?? demoQueue.peopleWaiting}</strong>
                 </article>
                 <article className="queue-stat-card">
                   <span className="queue-stat-icon" aria-hidden="true">⏱️</span>
                   <span>{content.estimatedWait}</span>
-                  <strong>{demoQueue.estimatedWait} {language === 'hi' ? 'मिनट' : 'minutes'}</strong>
+                  <strong>{serverQueue?.estimatedWaitMinutes ?? demoQueue.estimatedWait} {language === 'hi' ? 'मिनट' : 'minutes'}</strong>
                 </article>
                 <article className="queue-stat-card">
                   <span className="queue-stat-icon" aria-hidden="true">⚡</span>
@@ -1222,7 +1357,8 @@ function App() {
                 </article>
               </div>
 
-              <button type="button" className="primary-button queue-join-button" onClick={handleJoinQueue}>
+              {queueError && <div className="queue-alert" role="alert">{queueError}</div>}
+              <button type="button" className="primary-button queue-join-button" onClick={handleJoinQueue} disabled={!queueId || joiningQueue}>
                 {content.joinQueue}
               </button>
               <button type="button" className="secondary-button queue-person-button" onClick={handleChoosePerson}>
@@ -1249,9 +1385,9 @@ function App() {
 
               <div className="joined-queue-details">
                 <div><span>{content.nowServing}</span><strong>{currentQueueToken}</strong></div>
-                <div><span>{content.peopleAhead}</span><strong>{queueProgress.peopleAhead}</strong></div>
+                <div><span>{content.peopleAhead}</span><strong>{serverPeopleAhead}</strong></div>
                 <div><span>{content.estimatedWait}</span><strong>{estimatedQueueWait} {language === 'hi' ? 'मिनट' : 'minutes'}</strong></div>
-                <div><span>{content.averageServiceTime}</span><strong>{demoQueue.averageServiceTime} {content.minutesPerPerson}</strong></div>
+                <div><span>{content.averageServiceTime}</span><strong>{serverQueue?.averageServiceTimeMinutes ?? demoQueue.averageServiceTime} {content.minutesPerPerson}</strong></div>
                 <div><span>{content.status}</span><strong>{queueStatusLabel(queueStatus)}</strong></div>
               </div>
 
@@ -1268,6 +1404,8 @@ function App() {
                   {queueAlert === 'your-turn' ? content.itsYourTurn : content.yourTurnApproaching}
                 </div>
               )}
+
+              {queueError && <div className="queue-alert" role="alert">{queueError}</div>}
 
               <button type="button" className="secondary-button leave-queue-button" onClick={handleLeaveQueue}>
                 {content.leaveQueue}
